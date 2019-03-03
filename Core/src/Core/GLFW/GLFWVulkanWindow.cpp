@@ -24,6 +24,7 @@ void C_GLFWVulkanWindow::Init()
 {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	C_GLFWWindow::Init();
+
 }
 
 }
