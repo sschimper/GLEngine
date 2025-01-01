@@ -1,0 +1,80 @@
+name: build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+  
+jobs:
+  GCC:
+    name: ${{ matrix.config.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {
+            name: "Ubuntu GCC Debug",
+            config: "debug",
+          }
+        - {
+            name: "Ubuntu GCC Release",
+            config: "release",
+          }
+    steps:
+      - uses: actions/checkout@v2
+      - name: Get submodules
+        run: |
+          git submodule init
+          git submodule update
+      - name: Set up g++-14
+        run: |
+          cd /usr/bin && sudo ln -f g++-14 g++
+      - name: update
+        run: sudo apt update
+      - name: check version
+        run: |
+          g++ --version
+          gcc --version
+      - name: Get X11
+        run: sudo apt-get install xorg-dev
+      - name: Get uuid
+        run: sudo apt-get install uuid-dev
+      - name: Premake
+        run: |
+            sudo chmod +x Tools/Premake5/premake5
+            sudo Tools/Premake5/premake5 gmake2
+      - name: Build
+        run: make config=${{ matrix.config.config }} -j6
+  msvc:
+    name: MSVC api=${{ matrix.glfwapi }} config=${{ matrix.configuration }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [debug, release]
+        glfwapi: [opengl, vulkan]
+    steps:
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v1.1
+      - uses: actions/checkout@v2
+      - name: Get submodules
+        shell: cmd
+        run: |
+          git submodule init
+          git submodule update
+      - name: Generate solution
+        shell: cmd
+        run: Tools\Premake5\premake5.exe --glfwapi=${{ matrix.glfwapi }} vs2019
+      - name: Build
+        shell: cmd
+        run: msbuild Engine.sln /p:Configuration=${{ matrix.configuration }} -maxCpuCount
+      - name: Test
+        shell: cmd
+        run: |
+            bin\${{ matrix.configuration }}-windows-x86_64\CoreTest\CoreTest.exe
+            bin\${{ matrix.configuration }}-windows-x86_64\RendererTest\RendererTest.exe

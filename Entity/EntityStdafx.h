@@ -1,19 +1,11 @@
 #pragma once
 
-#include <Utils/Logging/LoggingMacros.h>
+#include <Entity/EntityApi.h>
 
-#include <iostream>
-#include <memory>
-#include <vector>
-#include <string>
-#include <sstream>
-#include <algorithm>
-#include <fstream>
-#include <regex>
-#include <stack>
-#include <exception>
-#include <map>
+#include <Core/CoreMacros.h>
+#include <Core/GUID.h>
+
+#include <Utils/Logging/LoggingMacros.h>
+#include <Utils/STLAfx.h>
 
 #include <glm/glm.hpp>
-
-#include <Entity/EntityApi.h>

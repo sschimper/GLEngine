@@ -1,51 +1,47 @@
 #include <EntityStdafx.h>
 
 #include <Entity/BasicEntity.h>
-
 #include <Entity/IComponent.h>
+#include <Entity/ComponentManager.h>
 
-#include <Renderer/IDebugGUIComponent.h>
+#include <rttr/registration>
 
+RTTR_REGISTRATION
+{
+	rttr::registration::class_<GLEngine::Entity::C_BasicEntity>("C_BasicEntity")
+		.constructor<std::string>()(rttr::policy::ctor::as_std_shared_ptr)
+		.constructor<>()(rttr::policy::ctor::as_std_shared_ptr)
+		.method("AfterDeserialize", &GLEngine::Entity::C_BasicEntity::AfterDeserialize)();
 
-namespace GLEngine {
-namespace Entity {
+	rttr::type::register_wrapper_converter_for_base_classes<std::shared_ptr<GLEngine::Entity::C_BasicEntity>>();
+}
+
+namespace GLEngine::Entity {
 
 //=================================================================================
 C_BasicEntity::C_BasicEntity(std::string name)
-	: m_Name(std::move(name))
-	, m_Components(new std::remove_pointer<decltype(m_Components)>::type)
-	, m_ID(NextGUID())
+	: I_Entity(std::move(name))
+	, m_ModelMatrix(glm::mat4(1.f))
 {
-	CORE_LOG(E_Level::Info, E_Context::Entity, "Entity '{}' created.", m_Name);
+}
+
+//=================================================================================
+C_BasicEntity::C_BasicEntity()
+	: I_Entity("")
+	, m_ModelMatrix(glm::mat4(1.f))
+{
 }
 
 //=================================================================================
 C_BasicEntity::~C_BasicEntity()
 {
-	delete m_Components;
-}
-
-//=================================================================================
-T_ComponentPtr C_BasicEntity::GetComponent(E_ComponentType type) const
-{
-	auto iter = m_Components->find(type);
-	if (iter != m_Components->end()) {
-		return iter->second;
-	}
-
-	return nullptr;
-}
-
-//=================================================================================
-std::string C_BasicEntity::GetName() const
-{
-	return m_Name;
+	CORE_LOG(E_Level::Error, E_Context::Core, "~C_BasicEntity()");
 }
 
 //=================================================================================
 void C_BasicEntity::Update()
 {
-	for (auto comp : *m_Components)
+	for (auto& comp : *m_Components)
 	{
 		comp.second->Update();
 	}
@@ -54,43 +50,45 @@ void C_BasicEntity::Update()
 //=================================================================================
 void C_BasicEntity::PostUpdate()
 {
-	for (auto comp : *m_Components)
+	for (auto& comp : *m_Components)
 	{
 		comp.second->PostUpdate();
 	}
 }
 
 //=================================================================================
-void C_BasicEntity::AddComponent(T_ComponentPtr component)
-{
-	m_Components->insert({ component->GetType(), component });
-}
-
-//=================================================================================
-GLEngine::Entity::I_Entity::EntityID C_BasicEntity::GetID() const
-{
-	return m_ID;
-}
-
-//=================================================================================
 void C_BasicEntity::OnEvent(Core::I_Event& event)
 {
-	auto debugGUI = GetComponent(Entity::E_ComponentType::DebugGUI);
-	if (debugGUI) {
-		GLEngine::component_cast<Entity::E_ComponentType::DebugGUI>(debugGUI)->Toggle();
+}
+
+//=================================================================================
+void C_BasicEntity::SetModelMatrix(const glm::mat4& modelMatrix)
+{
+	m_ModelMatrix = modelMatrix;
+}
+
+//=================================================================================
+const glm::mat4& C_BasicEntity::GetModelMatrix() const
+{
+	return m_ModelMatrix;
+}
+
+//=================================================================================
+glm::vec3 C_BasicEntity::GetPosition() const
+{
+	return m_ModelMatrix[3];
+}
+
+//=================================================================================
+void C_BasicEntity::AfterDeserialize()
+{
+	CORE_LOG(E_Level::Error, E_Context::Core, "Entity '{}' deserialized", m_Name);
+	auto& compManager = Entity::C_ComponentManager::Instance();
+	for (auto& comp : *m_Components)
+	{
+		compManager.RegisterComponent(comp.second);
+		comp.second->SetParent(shared_from_this());
 	}
 }
 
-//=================================================================================
-C_BasicEntity::T_ComponentIter C_BasicEntity::begin()
-{
-	return m_Components->begin();
-}
-
-//=================================================================================
-C_BasicEntity::T_ComponentIter C_BasicEntity::end()
-{
-	return m_Components->end();
-}
-
-}}
+} // namespace GLEngine::Entity

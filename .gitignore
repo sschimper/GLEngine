@@ -3,6 +3,13 @@
 
 # Ignore imgui ini files
 *imgui.ini
+Makefile
+
+# Ignore compiler score
+compileData.scor*
+
+data/obj/*
+data/log.txt
 
 # User-specific files
 *.suo
@@ -60,7 +67,6 @@ artifacts/
 *_i.h
 *.ilk
 *.meta
-*.obj
 *.pch
 *.pdb
 *.pgc
