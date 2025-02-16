@@ -16,6 +16,39 @@
 [submodule "vendor/DevIL"]
 	path = vendor/DevIL
 	url = https://github.com/DentonW/DevIL.git
+[submodule "vendor/gli"]
+	path = vendor/gli
+	url = https://github.com/g-truc/gli
+[submodule "data/Models/Sponza"]
+	path = data/Models/Sponza
+	url = https://github.com/jimmiebergmann/Sponza
+[submodule "vendor/dirent"]
+	path = vendor/dirent
+	url = https://github.com/tronkko/dirent
+[submodule "vendor/ImGuiFileDialog"]
+	path = vendor/ImGuiFileDialog
+	url = https://github.com/aiekick/ImGuiFileDialog
 [submodule "vendor/ImGui"]
 	path = vendor/ImGui
-	url = https://github.com/TheCherno/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "vendor/libjpeg"]
+	path = vendor/libjpeg
+	url = https://github.com/LuaDist/libjpeg
+[submodule "vendor/ImGuizmo"]
+	path = vendor/ImGuizmo
+	url = https://github.com/CedricGuillemet/ImGuizmo
+[submodule "vendor/crossguid"]
+	path = vendor/crossguid
+	url = https://github.com/graeme-hill/crossguid
+[submodule "vendor/RTTR"]
+	path = vendor/RTTR
+	url = https://github.com/RohacekD/rttr
+[submodule "vendor/slot_map"]
+	path = vendor/slot_map
+	url = https://github.com/SergeyMakeev/slot_map
+[submodule "vendor/libpng"]
+	path = vendor/libpng
+	url = https://github.com/glennrp/libpng
+[submodule "vendor/gtest"]
+	path = vendor/gtest
+	url = https://github.com/google/googletest

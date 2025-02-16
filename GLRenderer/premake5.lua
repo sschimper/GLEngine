@@ -1,88 +1,65 @@
-include "../premakeDefines.lua"
+include "../Tools/Premake5/premakeDefines.lua"
 
 project "GLRenderer"
 	kind "SharedLib"
 	language "C++"
 	staticruntime "off"
 
-	targetdir ("../bin/" .. outputdir .. "/%{prj.name}")
-	objdir ("../obj/" .. outputdir .. "/%{prj.name}")
-	
-	pchheader "GLRendererStdafx.h"
-	pchsource "GLRendererStdafx.cpp"
-	
+	SetupProject("GLRenderer")
+	PrecompiledHeaders("GLRenderer")
+
 	Link("Entity")
 	Link("Utils")
 	Link("Renderer")
+	Link("GLFWWindowManager")
 	Link("Core")
-	Link("Physics")
+	Link("GUI")
+	Link("Editor")
+--	Link("Animation") -- until the whole skeletal Animation could be moved outside of API specific implementation
 
-	files
-	{
-		"GLRenderer/**.h",
-		"GLRenderer/**.cpp",
-		"GLRenderer/**.inl",
-		"../%{IncludeDir.ImGui}/examples/imgui_impl_glfw.h",
-		"../%{IncludeDir.ImGui}/examples/imgui_impl_opengl3.h",
-		"../%{IncludeDir.ImGui}/examples/imgui_impl_glfw.cpp",
-		"../%{IncludeDir.ImGui}/examples/imgui_impl_opengl3.cpp",
-		"GLRendererStdafx.cpp",
-		"GLRendererStdafx.h",
-		"premake5.lua",
-	}
+	LinkDependency("ImGui")
+	LinkDependency("pugixml")
+	LinkDependency("GLFW")
+	LinkDependency("RTTR")
 
 	includedirs
 	{
-		".",
-		"../%{IncludeDir.GLFW}",
+		"../Physics",
 		"../%{IncludeDir.Glad}",
 		"../%{IncludeDir.GLM}",
-		"../%{IncludeDir.pugixml}",
+		"../%{IncludeDir.GLI}",
 		"../%{IncludeDir.fmt}",
-		"../%{IncludeDir.ImGui}",
-		"../%{IncludeDir.DevIL}",
-		
-		"../vendor/AssimpPrebuild/include",
-	}
-
-	libdirs
-	{
-		"../vendor/AssimpPrebuild/lib/",
-		"../vendor/bin/Debug-windows-x86_64/DevIL-IL/",
+		"%{wks.location}/%{IncludeDir.slot_map}",
 	}
 
 	links 
 	{ 
-		"GLFW",
 		"Glad",
-		"opengl32.lib",
-		"pugixml",
-		"ImGui",
 		"DevIL-IL",
-		"../vendor/AssimpPrebuild/lib/assimp.lib",
-		"../vendor/projects/DevIL/bin/Debug-windows-x86_64/DevIL-IL/DevIL-IL.dll",
+	}
+
+	-- used in ImGui\examples\imgui_impl_opengl3.cpp
+	defines
+	{
+		"IMGUI_IMPL_OPENGL_LOADER_GLAD",
+		"IMGUI_IMPL_API=",
 	}
 
 	filter "system:windows"
-		cppdialect "C++17"
-		systemversion "latest"
-
 		defines
 		{
-			"CORE_PLATFORM=CORE_PLATFORM_WIN",
-			"BUILD_GLRENDERER_DLL",
+			"IMGUI_API=__declspec(dllimport)",
 		}
 
 		postbuildcommands
 		{
-			("{COPY} %{cfg.buildtarget.relpath} \"../bin/" .. outputdir .. "/Sandbox/\""),
-			("{COPY} \"../vendor/projects/DevIL/bin/Debug-windows-x86_64/DevIL-IL/DevIL-IL.dll\" \"../bin/" .. outputdir .. "/Sandbox/\"")
+			("{COPY} %{cfg.buildtarget.relpath} \"%{wks.location}/bin/" .. outputdir .. "/Sandbox/\""),
 		}
 
-	filter "configurations:Debug"
-		runtime "Debug"
-		symbols "On"
+		links
+		{
+			"opengl32.lib",
+		}
 
-	filter "configurations:Release"
-		runtime "Release"
-		optimize "On"
+	filter "system:linux"
+		pic "On"

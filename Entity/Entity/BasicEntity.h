@@ -1,39 +1,39 @@
 #pragma once
 
+#include <Entity/EntityApi.h>
 #include <Entity/IEntity.h>
 
-namespace GLEngine {
-namespace Entity {
+#include <memory>
 
-class ENTITY_API_EXPORT C_BasicEntity : public I_Entity {
-	using T_ComponentsContainer = std::map<E_ComponentType, T_ComponentPtr>*;
+namespace GLEngine::Entity {
+
+/**
+ * This class should now do only the "dirty" work of updating components etc
+ */
+class ENTITY_API_EXPORT C_BasicEntity : public I_Entity, public std::enable_shared_from_this<C_BasicEntity> {
 public:
-	C_BasicEntity(std::string name);
+	explicit C_BasicEntity(std::string name);
+	explicit C_BasicEntity();
 	virtual ~C_BasicEntity();
-	virtual T_ComponentPtr GetComponent(E_ComponentType type) const override;
-	virtual std::string GetName() const override;
 
 	virtual void Update() override;
 	virtual void PostUpdate() override;
 
-
-	void AddComponent(T_ComponentPtr component);
-
-	//=================================================================================
-	virtual EntityID GetID() const override;
+	//================================================================================
 	virtual void OnEvent(Core::I_Event& event) override;
 
+	void	 SetModelMatrix(const glm::mat4& modelMatrix);
+	virtual const glm::mat4& GetModelMatrix() const override;
 
-	//=================================================================================
-	using T_ComponentIter = std::remove_pointer<T_ComponentsContainer>::type::iterator;
-	virtual T_ComponentIter begin();
-	virtual T_ComponentIter end();
+	virtual glm::vec3 GetPosition() const override;
 
-protected:
-	EntityID m_ID;
-	std::string m_Name;
-	T_ComponentsContainer m_Components;
+	// Deserializer special method
+	void AfterDeserialize();
+
+	RTTR_ENABLE(I_Entity);
+
+private:
+	glm::mat4 m_ModelMatrix;
 };
 
-}
-}
+} // namespace GLEngine::Entity

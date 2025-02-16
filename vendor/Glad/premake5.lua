@@ -2,8 +2,8 @@ project "Glad"
 	kind "StaticLib"
 	language "C"
 
-	targetdir ("../../bin/" .. outputdir .. "/%{prj.name}")
-	objdir ("../../obj/" .. outputdir .. "/%{prj.name}")
+	targetdir ("%{wks.location}/bin/" .. outputdir .. "/vendor/%{prj.name}")
+	objdir ("%{wks.location}/obj/" .. outputdir .. "/vendor/%{prj.name}")
 
 	files{
 		"include/glad/glad.h",
@@ -20,5 +20,13 @@ project "Glad"
 		systemversion "latest"
 		staticruntime "On"
 
-	filter { "system:windows", "configurations:Release"}
-		buildoptions "/MT"
+	filter "system:linux"
+		pic "On"
+
+	filter "configurations:Debug"
+		runtime "Debug"
+		symbols "on"
+
+	filter "configurations:Release"
+		runtime "Release"
+		optimize "on"

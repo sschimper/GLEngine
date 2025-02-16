@@ -4,8 +4,7 @@
 
 #include <string>
 
-namespace Utils {
-namespace Logging {
+namespace Utils::Logging {
 
 struct UTILS_API_EXPORT S_Data {
 	std::string m_Text;
@@ -14,6 +13,4 @@ struct UTILS_API_EXPORT S_Data {
 	E_Level		m_Level;
 	E_Context	m_Context;
 };
-}
-}
-
+} // namespace Utils::Logging
