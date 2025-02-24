@@ -1,32 +1,73 @@
 #pragma once
 
-#include <Renderer/IRenderableComponent.h>
-
 #include <GLRenderer/Mesh/StaticMeshResource.h>
 
-namespace GLEngine {
-namespace GLRenderer {
+#include <Renderer/IRenderableComponent.h>
+#include <Renderer/Mesh/Loading/MeshResource.h>
 
-namespace Mesh {
+#include <Core/Resources/ResourceHandle.h>
+
+#include <rttr/registration_friend.h>
+
+namespace GLEngine {
+namespace Renderer::MeshData {
 struct Mesh;
+}
+namespace Renderer {
+class C_Material;
+}
+
+namespace GLRenderer {
+namespace Shaders {
+class C_ShaderProgram;
+}
+namespace Mesh {
+class C_StaticMeshResource;
 }
 
 namespace Components {
-
 class C_StaticMesh : public Renderer::I_RenderableComponent {
 public:
-	C_StaticMesh(std::string meshFile);
-	C_StaticMesh(const Mesh::Mesh& meshFile);
-	virtual void PerformDraw() const override;
+	C_StaticMesh(std::string meshFile, std::string_view shader, const std::shared_ptr<Entity::I_Entity>& owner);
+	C_StaticMesh();
+	C_StaticMesh(const Core::ResourceHandle<Renderer::MeshResource>& meshHandle,
+				 std::string_view									 shader,
+				 const std::shared_ptr<Entity::I_Entity>&			 owner,
+				 const Renderer::MeshData::Material*				 material = nullptr);
+	~C_StaticMesh() override;
+	void									  PerformDraw() const override;
+	[[nodiscard]] Physics::Primitives::S_AABB GetAABB() const override;
+
+	void			 DebugDrawGUI() override;
+	std::string_view GetDebugComponentName() const override;
+	bool			 HasDebugDrawGUI() const override;
+
+	void				  SetShader(const std::string shader);
+	std::string			  GetShader() const;
+	void				  SetShadowShader(const std::string shader);
+	std::string			  GetShadowShader() const;
+	void				  SetMeshFile(const std::filesystem::path meshfile);
+	std::filesystem::path GetMeshFile() const;
+
+	void SetMaterial(const std::shared_ptr<Renderer::C_Material>& material);
+
+	void Update() override;
+
+	RTTR_ENABLE(Renderer::I_RenderableComponent);
+
 protected:
-	std::string										m_meshFile;
-	std::shared_ptr<Mesh::C_StaticMeshResource>		m_Mesh;
+	void SetMaterial(const Renderer::MeshData::Material& material);
+
+	std::vector<std::shared_ptr<Mesh::C_StaticMeshResource>> m_Mesh;
+	Core::ResourceHandle<Renderer::MeshResource>			 m_MeshResource;
+	std::shared_ptr<Shaders::C_ShaderProgram>				 m_Shader;
+	std::shared_ptr<Shaders::C_ShaderProgram>				 m_ShadowPassShader;
+	std::shared_ptr<Renderer::C_Material>					 m_Material;
+	Physics::Primitives::S_AABB								 m_AABB;
+
+	RTTR_REGISTRATION_FRIEND;
 };
 
-class C_StaticMeshBuilder : public Entity::I_ComponenetBuilder
-{
-public:
-	virtual std::shared_ptr<Entity::I_Component> Build(const pugi::xml_node& node) override;
-};
-
-}}}
+} // namespace Components
+} // namespace GLRenderer
+} // namespace GLEngine

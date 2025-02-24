@@ -1,34 +1,49 @@
-include "../premakeDefines.lua"
+include "../Tools/Premake5/premakeDefines.lua"
 
 project "Sandbox"
-	kind "ConsoleApp"
+    kind "ConsoleApp"
 	language "C++"
 	staticruntime "off"
 	
 	debugdir ("../data/")
 	SetupProject("Sandbox")
-	debugdir ("../data/")
 	
+	pchheader "SandboxStdafx.h"
+	pchsource "SandboxStdafx.cpp"
 	
 	Link("Core")
 	Link("Utils")
 	Link("GLRenderer")
+	LinkDependency("RTTR")
+	if (_OPTIONS["glfwapi"] ~= "opengl") then
+		Link("VulkanRenderer")
+	end
+
+	files
+	{
+		"SandboxStdafx.cpp",
+		"SandboxStdafx.h",
+	}
 
 	includedirs
 	{
 		"../Renderer",
+		"../GLFWWindowManager",
 		"../%{IncludeDir.GLM}",
 		"../%{IncludeDir.fmt}",
 	}
 
 	filter "system:windows"
-		cppdialect "C++17"
+		kind "WindowedApp"
 		systemversion "latest"
+		Link("DX12Renderer")
 
-		defines
+	filter "system:linux"
+		links
 		{
-			"CORE_PLATFORM=CORE_PLATFORM_WIN"
+			"X11",
 		}
+		linkoptions "-pthread"
 
 	filter "configurations:Debug"
 		runtime "Debug"

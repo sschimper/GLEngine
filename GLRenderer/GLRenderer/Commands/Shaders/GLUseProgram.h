@@ -1,27 +1,23 @@
 #pragma once
 
-#include <Core/CoreMacros.h>
-
 #include <Renderer/IRenderCommand.h>
 
-namespace GLEngine {
-namespace GLRenderer {
-namespace Commands {
+namespace GLEngine::GLRenderer::Commands {
 
 // @todo: Not a final state
 class C_GLUseProgram : public Renderer::I_RenderCommand {
 public:
-	C_GLUseProgram(GLuint program);
+	explicit C_GLUseProgram(GLuint program);
 
 	//===========================================
 	// Renderer::I_RenderCommand
 	//===========================================
-	virtual void Commit() override;
-	virtual E_Type GetType() const override;
-	virtual std::shared_ptr<Renderer::I_Resource> GetResource() const override;
+	void					  Commit() override;
+	E_Type					  GetType() const override;
+	[[nodiscard]] std::string GetDescriptor() const override;
 
 private:
-	GLuint m_Proram;
+	GLuint m_Program;
 };
 
-}}}
+} // namespace GLEngine::GLRenderer::Commands

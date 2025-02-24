@@ -1,490 +1,378 @@
-﻿#include <GLRendererStdafx.h>
+#include <GLRendererStdafx.h>
 
-#include <GLRenderer/Windows/ExperimentWindow.h>
-
-#include <GLRenderer/Cameras/OrbitalCamera.h>
-
+#include <GLRenderer/Buffers/UBO/ModelData.h>
+#include <GLRenderer/Buffers/UniformBuffersManager.h>
 #include <GLRenderer/Commands/GLClear.h>
-#include <GLRenderer/Commands/GLEnable.h>
-#include <GLRenderer/Commands/GlClearColor.h>
 #include <GLRenderer/Commands/GLCullFace.h>
+#include <GLRenderer/Commands/GLEnable.h>
 #include <GLRenderer/Commands/GLViewport.h>
+#include <GLRenderer/Commands/GlClearColor.h>
 #include <GLRenderer/Commands/HACK/LambdaCommand.h>
-
-#include <GLRenderer/Components/TerrainMesh.h>
-#include <GLRenderer/Components/StaticMesh.h>
-
-#include <GLRenderer/Entities/TerrainEntity.h>
-
+#include <GLRenderer/Components/SkeletalMesh.h>
+#include <GLRenderer/Debug.h>
+#include <GLRenderer/GLRenderInterface3D.h>
+#include <GLRenderer/GLRendererInterface2D.h>
+#include <GLRenderer/GLResourceManager.h>
+#include <GLRenderer/Helpers/OpenGLTypesHelpers.h>
+#include <GLRenderer/ImGui/GLImGUILayer.h>
+#include <GLRenderer/Materials/MaterialBuffer.h>
+#include <GLRenderer/OGLDevice.h>
+#include <GLRenderer/OGLRenderer.h>
+#include <GLRenderer/PersistentDebug.h>
+#include <GLRenderer/RenderInterface.h>
 #include <GLRenderer/Shaders/ShaderManager.h>
 #include <GLRenderer/Shaders/ShaderProgram.h>
-
-#include <GLRenderer/ImGui/ImGuiLayer.h>
-
-#include <GLRenderer/MeshLoading/Scene.h>
-
-#include <GLRenderer/Helpers/OpenGLTypesHelpers.h>
-
-#include <GLRenderer/Textures/TextureLoader.h>
+#include <GLRenderer/SunShadowMapTechnique.h>
+#include <GLRenderer/Textures/TextureManager.h>
 #include <GLRenderer/Textures/TextureUnitManager.h>
+#include <GLRenderer/Windows/ExperimentWindow.h>
+#include <GLRenderer/Windows/WaterRendering.h>
 
-#include <GLRenderer/Buffers/UBO/FrameConstantsBuffer.h>
-#include <GLRenderer/Buffers/UniformBuffersManager.h>
+#include <Renderer/Cameras/OrbitalCamera.h>
+#include <Renderer/Lights/SunLight.h>
+#include <Renderer/Materials/MaterialManager.h>
+#include <Renderer/Mesh/Loading/MeshResource.h>
+#include <Renderer/RayCasting/Geometry/TrimeshModel.h>
+#include <Renderer/Textures/TextureResource.h>
+#include <Renderer/Textures/TextureView.h>
+#include <Renderer/Windows/RayTrace.h>
 
-#include <GLRenderer/Components/StaticMesh.h>
-#include <GLRenderer/Components/SkyBox.h>
-#include <GLRenderer/PersistentDebug.h>
-#include <GLRenderer/OGLRenderer.h>
-#include <GLRenderer/Debug.h>
+#include <Editor/Editors/ImageEditor.h>
+#include <Editor/EntityEditor/EntitiesWindow.h>
+#include <Editor/EntityEditor/EntityEditor.h>
 
-#include <GLRenderer/GUI/Components/GLEntityDebugComponent.h>
+#include <GUI/ConsoleWindow.h>
+#include <GUI/FileDialogWindow.h>
 
-#include <Physics/Primitives/Ray.h>
 #include <Physics/Primitives/Intersection.h>
+#include <Physics/Primitives/Ray.h>
 
-#include <Entity/IComponent.h>
 #include <Entity/BasicEntity.h>
+#include <Entity/ComponentManager.h>
 
-#include <Core/EventSystem/EventDispatcher.h>
-#include <Core/EventSystem/Event/KeyboardEvents.h>
 #include <Core/EventSystem/Event/AppEvent.h>
+#include <Core/EventSystem/Event/KeyboardEvents.h>
+#include <Core/EventSystem/EventDispatcher.h>
+#include <Core/Resources/ResourceManager.h>
+
+#include <Utils/EnumUtils.h>
+#include <Utils/Serialization/XMLDeserialize.h>
+#include <Utils/Serialization/XMLSerialize.h>
+#include <Utils/StdVectorUtils.h>
+
+#include <glm/gtx/transform.hpp>
 
 #include <imgui.h>
 
-#include <pugixml.hpp>
-
-namespace GLEngine {
-namespace GLRenderer {
-namespace Windows {
+namespace GLEngine::GLRenderer::Windows {
 
 //=================================================================================
-C_ExplerimentWindow::C_ExplerimentWindow(const Core::S_WindowInfo& wndInfo)
+C_ExperimentWindow::C_ExperimentWindow(const Core::S_WindowInfo& wndInfo)
 	: C_GLFWoGLWindow(wndInfo)
+	, m_World(std::make_shared<Entity::C_EntityManager>())
 	, m_LayerStack(std::string("ExperimentalWindowLayerStack"))
 	, m_Samples("Frame Times")
-	, m_GammaSlider(2.2f, 1.f,5.f, "Gamma")
+	, m_GammaSlider(2.2f, 1.f, 5.f, "Gamma")
 	, m_ExposureSlider(1.f, .1f, 10.f, "Exposure")
-	, m_VSync(false)
-	, m_Spawning(false)
-	, m_SpawningName("")
-	, m_SpawningFilename("")
-	, m_HDRFBO("HDR")
-	, m_GUITexts({{
-		("Avg frame time {:.2f}"),
-		("Avg fps {:.2f}"),
-		("Min/max frametime {:.2f}/{:.2f}")
-		}})
-	, m_Windows("Windows")
+	, m_VSync(true)
+	, m_GUITexts({{GUI::C_FormatedText("Avg frame time {:.2f}"), GUI::C_FormatedText("Avg fps {:.2f}"), GUI::C_FormatedText("Min/max frametime {:.2f}/{:.2f}")}})
+	, m_Windows(std::string("Windows"))
+	, m_MainPass(nullptr)
+	, m_ShadowPass(nullptr)
+	, m_HDRFBO(nullptr)
+	, m_HDRFBOAtmosphere(nullptr)
+	, m_EditorLayer(*&C_DebugDraw::Instance(), GetInput(), {0, 0, GetSize()}) //< viewport could be different from window size in the future
 {
 	glfwMakeContextCurrent(m_Window);
-
-	m_FrameConstUBO = Buffers::C_UniformBuffersManager::Instance().CreateUniformBuffer<Buffers::UBO::C_FrameConstantsBuffer>("frameConst");
 
 	m_FrameTimer.reset();
 
-	m_ImGUI = new ImGui::C_ImGuiLayer(m_ID);
+	m_ImGUI = new C_GLImGUILayer(m_ID);
 	m_ImGUI->OnAttach(); // manual call for now.
 	m_LayerStack.PushLayer(m_ImGUI);
+	m_LayerStack.PushLayer(&m_EditorLayer);
 	m_LayerStack.PushLayer(&m_CamManager);
 
 	m_VSync.SetName("Lock FPS");
+
+	Entity::C_ComponentManager::Instance();
+	auto& rm = Core::C_ResourceManager::Instance();
+	rm.RegisterResourceType(new Renderer::TextureLoader());
+	rm.RegisterResourceType(new Renderer::MeshLoader());
+	rm.RegisterResourceType(new Renderer::TrimeshModelTrimesh());
 }
 
 //=================================================================================
-C_ExplerimentWindow::~C_ExplerimentWindow() = default;
+C_ExperimentWindow::~C_ExperimentWindow()
+{
+	dynamic_cast<C_OGLRenderer*>(m_renderer.get())->DestroyControls(m_ImGUI->GetGUIMgr());
+	m_CamManager.DestroyControls(m_ImGUI->GetGUIMgr());
+	Renderer::C_MaterialManager::Instance().DestroyControls(m_ImGUI->GetGUIMgr());
+};
 
 //=================================================================================
-void C_ExplerimentWindow::Update()
+void C_ExperimentWindow::Update()
 {
-	Shaders::C_ShaderManager::Instance().Update();
+	m_EditorLayer.SetCamera(m_CamManager.GetActiveCamera());
 	m_ImGUI->FrameBegin();
-	m_ImGUI->OnUpdate();
-	//MouseSelect();
-
-	const auto avgMsPerFrame = m_Samples.Avg();
-	m_GUITexts[static_cast<std::underlying_type_t<E_GUITexts>>(E_GUITexts::AvgFrametime)].UpdateText(m_Samples.Avg());
-	m_GUITexts[static_cast<std::underlying_type_t<E_GUITexts>>(E_GUITexts::AvgFps)].UpdateText(1000.f/ avgMsPerFrame);
-	m_GUITexts[static_cast<std::underlying_type_t<E_GUITexts>>(E_GUITexts::MinMaxFrametime)]
-		.UpdateText(
-			*std::min_element(m_Samples.cbegin(), m_Samples.cend()), 
-			*std::max_element(m_Samples.cbegin(), m_Samples.cend()));
-	
-	glfwSwapInterval(m_VSync?1:0);
-
-	m_World.OnUpdate();
-
-	glfwMakeContextCurrent(m_Window);
-	m_HDRFBO.Bind<E_FramebufferTarget::Draw>();
-	{
-		using namespace Commands;
-		m_renderer->AddCommand(
-			std::move(
-				std::make_unique<C_GLClear>(C_GLClear::E_ClearBits::Color | C_GLClear::E_ClearBits::Depth)
-			)
-		);
-		m_renderer->AddCommand(
-			std::move(
-				std::make_unique<C_GLViewport>(0,0, GetWidth(), GetHeight())
-			)
-		);
-	}
-
-	auto cameraComponent = m_CamManager.GetActiveCamera();
-	if (!cameraComponent) {
-		return;
-	}
-
-
-	auto entitiesInView = m_World.GetEntities(cameraComponent->GetFrustum());
-
-
-	bool my_tool_active = true;
-	::ImGui::Begin("Entities", &my_tool_active);
-		if (::ImGui::Button("Spawn new terrain")) {
-			m_Spawning = true;
-			m_SpawningName[0] = '\0';
-			m_SpawningFilename[0] = '\0';
-		}
-		for (const auto entity : entitiesInView) {
-			bool selected = false;
-			::ImGui::Selectable(entity->GetName().c_str(), &selected);
-			if (selected) {
-				entity->OnEvent(Core::C_UserEvent("selected"));
-			}
-		}
-	::ImGui::End();
-
-
-	if (m_Spawning) {
-		::ImGui::Begin("Spawn terrain", &m_Spawning);
-		::ImGui::InputText("Terrain name", m_SpawningName, 255);
-		::ImGui::InputText("Terrain filename", m_SpawningFilename, 255);
-
-		if (::ImGui::Button("Spawn")) {
-			m_Spawning = false;
-			auto Terrain = std::make_shared<C_TerrainEntity>(m_SpawningName);
-			m_World.AddEntity(Terrain); Textures::TextureLoader tl;
-			Mesh::Texture t;
-			bool retval = tl.loadTexture(m_SpawningFilename, t);
-			if (retval) {
-				Textures::C_Texture ct(m_SpawningFilename);
-
-				ct.StartGroupOp();
-				glTexImage2D(ct.GetTarget(),
-					0,
-					GL_RGB,
-					(GLsizei)1024,
-					(GLsizei)1024,
-					0,
-					GL_RGBA,
-					T_TypeToGL<typename std::remove_pointer<decltype(t.data)::element_type>::type>::value,
-					t.data.get());
-				ct.SetDimensions({ 1024, 1024 });
-				ct.SetWrap(E_WrapFunction::Repeat, E_WrapFunction::Repeat);
-				ct.SetFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
-				ct.GenerateMipMaps();
-
-				ct.EndGroupOp();
-
-				auto patch = std::make_shared<Components::C_TerrainMesh>(std::move(ct));
-				Terrain->AddPatch(patch);
-				patch->SetCoord({ 0,0 });
-
-			}
-			else {
-				CORE_LOG(E_Level::Error, E_Context::Entity, "Given texture {} doesn't exists", m_SpawningFilename);
-				Terrain->AddPatch(glm::ivec2(0, 0));
-			}
-		}
-
-		::ImGui::End();
-	}
-
-
-	// ----- Frame init -------
-	auto& shmgr = Shaders::C_ShaderManager::Instance();
-	auto basicProgram = shmgr.GetProgram("basic");
-	shmgr.ActivateShader(basicProgram);
-
-	m_FrameConstUBO->SetView(cameraComponent->GetViewMatrix());
-	m_FrameConstUBO->SetProjection(cameraComponent->GetProjectionMatrix());
-	m_FrameConstUBO->SetCameraPosition(glm::vec4(cameraComponent->GetPosition(), 1.0f));
-
-	Core::C_Application::Get().GetActiveRenderer()->AddCommand(
-		std::move(
-			std::make_unique<Commands::HACK::C_LambdaCommand>(
-				[&]() {
-					m_FrameConstUBO->UploadData();
-					m_FrameConstUBO->Activate(true);
-				}
-			)
-		)
-	);
-
-
-
-	for (auto& entity : entitiesInView)
-	{
-		if (auto renderable = entity->GetComponent<Entity::E_ComponentType::Graphical>()) {
-			renderable->PerformDraw();
-		}
-	}
-
-	// ----- Frame init -------
-	Core::C_Application::Get().GetActiveRenderer()->AddCommand(
-		std::move(
-			std::make_unique<Commands::HACK::C_LambdaCommand>(
-				[&]() {
-					{
-						RenderDoc::C_DebugScope s("CameraDebugDraw");
-						std::static_pointer_cast<Cameras::C_OrbitalCamera>(cameraComponent)->DebugDraw();
-					}
-
-					shmgr.DeactivateShader();
-					{
-						RenderDoc::C_DebugScope s("Persistent debug");
-						C_PersistentDebug::Instance().DrawAll();
-					}
-					{
-						RenderDoc::C_DebugScope s("Merged debug");
-						C_DebugDraw::Instance().DrawMergedGeoms();
-					}
-				}
-			)
-		)
-	);
-
-	m_HDRFBO.Unbind<E_FramebufferTarget::Draw>();
-
-	{
-		using namespace Commands;
-		m_renderer->AddCommand(
-			std::move(
-				std::make_unique<C_GLClear>(C_GLClear::E_ClearBits::Color | C_GLClear::E_ClearBits::Depth)
-			)
-		);
-		m_renderer->AddCommand(
-			std::move(
-				std::make_unique<C_GLViewport>(0, 0, GetWidth(), GetHeight())
-			)
-		);
-	}
-
-	auto HDRTexture = m_HDRFBO.GetAttachement(GL_COLOR_ATTACHMENT0);
+	Shaders::C_ShaderManager::Instance().Update(); // update before GUI as GUI can issue some commands containing old shaders
+	m_LayerStack.OnUpdate();
+	Core::C_ResourceManager::Instance().UpdatePendingLoads();
+	Renderer::C_MaterialManager::Instance().Update();
 
 	auto& tm = Textures::C_TextureUnitManger::Instance();
-	tm.BindTextureToUnit(*(HDRTexture.get()), 0);
+	tm.Reset();
+	// MouseSelect();
 
-	m_HDRFBO.Bind<E_FramebufferTarget::Read>();
+	const auto avgMsPerFrame = m_Samples.Avg();
+	m_GUITexts[::Utils::ToIndex(E_GUITexts::AvgFrametime)].UpdateText(m_Samples.Avg());
+	m_GUITexts[::Utils::ToIndex(E_GUITexts::AvgFps)].UpdateText(1000.f / avgMsPerFrame);
+	m_GUITexts[::Utils::ToIndex(E_GUITexts::MinMaxFrametime)].UpdateText(*::Utils::min_element(m_Samples), *::Utils::max_element(m_Samples));
 
-	Core::C_Application::Get().GetActiveRenderer()->AddCommand(
-		std::move(
-			std::make_unique<Commands::HACK::C_LambdaCommand>(
-				[&]() {
-					auto shader = shmgr.GetProgram("screenQuad");
-					shmgr.ActivateShader(shader);
-					shader->SetUniform("gamma", m_GammaSlider.GetValue());
-					shader->SetUniform("exposure", m_ExposureSlider.GetValue());
-					shader->BindSampler(*(HDRTexture.get()), 0);
-				}
-			)
-		)
-	);
+	glfwSwapInterval(m_VSync ? 1 : 0);
 
-	m_ScreenQuad->PerformDraw();
-	
-	Core::C_Application::Get().GetActiveRenderer()->AddCommand(
-		std::move(
-			std::make_unique<Commands::HACK::C_LambdaCommand>(
-				[&]() {
-					shmgr.DeactivateShader();
-				}
-			)
-		)
-	);
-
-
-	m_HDRFBO.Unbind<E_FramebufferTarget::Read>();
-
-	// ----- Actual rendering --
-
+	if (auto* rayTraceWindow = m_ImGUI->GetGUIMgr().GetWindow(m_RayTraceGUID); rayTraceWindow)
 	{
-		RenderDoc::C_DebugScope s("RendererCommit");
-		m_renderer->Commit();
+		dynamic_cast<Renderer::C_RayTraceWindow*>(rayTraceWindow)->DebugDraw(&C_DebugDraw::Instance());
 	}
-	m_renderer->ClearCommandBuffers();
-	// ----- Actual rendering --
 
+	m_World->OnUpdate();
+
+	glfwMakeContextCurrent(m_Window);
+
+	const auto camera = m_CamManager.GetActiveCamera();
+	GLE_ASSERT(camera, "No active camera");
+
+	// ======
+	// Sun shadow
+	// ======
+	if (m_SunShadow)
+	{
+		// shadow pass
+		m_SunShadow->Render(*m_World.get(), camera.get());
+		m_MainPass->SetSunShadowMap(m_SunShadow->GetZBuffer());
+		m_MainPass->SetSunViewProjection(m_SunShadow->GetLastViewProjection());
+	}
+	else
+	{
+		auto& tMGR = Textures::C_TextureManager::Instance();
+		m_MainPass->SetSunShadowMap(tMGR.GetIdentityTextureHandle());
+	}
+	// ======
+	// World render
+	// ======
+	m_HDRFBO->Bind<E_FramebufferTarget::Draw>();
+	m_MainPass->Render(*m_World.get(), camera, GetWidth(), GetHeight());
+	{
+		RenderDoc::C_DebugScope s("Handles draw");
+		m_3DRenderer.Commit(*m_RenderInterfaceHandles.get());
+		m_2DRenderer.Commit(*m_2DRenderInterfaceHandles.get());
+		m_2DRenderer.Clear();
+	}
+	m_HDRFBO->Unbind<E_FramebufferTarget::Draw>();
+
+	// ======
+	// Atmosphere render
+	// ======
+	Renderer::Handle<Renderer::Texture> HDRTexturePtr;
+	if (m_HDRFBOAtmosphere)
+	{
+		m_HDRFBO->Bind<E_FramebufferTarget::Read>();
+
+		const auto			  HDRTexture = m_HDRFBO->GetAttachment(GL_COLOR_ATTACHMENT0);
+		const auto			  worldDepth = m_HDRFBO->GetAttachment(GL_DEPTH_ATTACHMENT);
+		const FullScreenSetup fsSetup{
+			.shaderName = "atmosphere",
+			.shaderSetup =
+				[](Shaders::C_ShaderProgram& shader) {
+					shader.SetUniform("hdrBuffer", 0);
+					shader.SetUniform("depthBuffer", 1);
+				},
+			.inputTextures = {HDRTexture, worldDepth},
+			.renderTarget  = *m_HDRFBOAtmosphere.get(),
+		};
+		m_RenderInterface->RenderFullScreen(fsSetup);
+		m_HDRFBO->Unbind<E_FramebufferTarget::Read>();
+
+		HDRTexturePtr = m_HDRFBOAtmosphere->GetAttachment(GL_COLOR_ATTACHMENT0);
+		m_HDRFBOAtmosphere->Bind<E_FramebufferTarget::Read>();
+	}
+	else
+	{
+		m_HDRFBO->Bind<E_FramebufferTarget::Read>();
+		HDRTexturePtr = m_HDRFBO->GetAttachment(GL_COLOR_ATTACHMENT0);
+	}
+
+	// ======
+	// HDR correction
+	// ======
+	auto defaultRenderTarget = m_Device->GetDefualtRendertarget();
+	// clear screen
+	{
+		using namespace Commands;
+		m_renderer->AddCommand(std::make_unique<C_GLClear>(C_GLClear::E_ClearBits::Color | C_GLClear::E_ClearBits::Depth));
+		m_renderer->AddCommand(std::make_unique<C_GLViewport>(Renderer::C_Viewport(0, 0, GetSize())));
+	}
+	const FullScreenSetup fsSetup{
+		.shaderName = "screenQuad",
+		.shaderSetup =
+			[gamma = m_GammaSlider.GetValue(), exposure = m_ExposureSlider.GetValue()](Shaders::C_ShaderProgram& shader) {
+				shader.SetUniform("gamma", gamma);
+				shader.SetUniform("exposure", exposure);
+				shader.SetUniform("hdrBuffer", 0);
+			},
+		.inputTextures = {HDRTexturePtr},
+		.renderTarget  = defaultRenderTarget,
+	};
+	m_RenderInterface->RenderFullScreen(fsSetup);
+	m_HDRFBO->Unbind<E_FramebufferTarget::Read>();
+
+	// ======
+	// Debug and ImGui
+	// ======
+	{
+		RenderDoc::C_DebugScope s("Persistent debug");
+		C_PersistentDebug::Instance().DrawAll();
+	}
+	{
+		RenderDoc::C_DebugScope s("Merged debug");
+		C_DebugDraw::Instance().DrawMergedGeoms();
+	}
 	{
 		RenderDoc::C_DebugScope s("ImGUI");
-		static_cast<C_OGLRenderer*>(m_renderer.get())->DrawControls();
-		m_ImGUI->FrameEnd();
+		m_renderer->AddCommand(std::make_unique<Commands::HACK::C_LambdaCommand>([this]() { m_ImGUI->FrameEnd(m_Input); }, "m_ImGUI->FrameEnd"));
 	}
 
-
+	// commit of final commands - from commit few lines above
+	m_renderer->Commit();
+	m_renderer->ClearCommandBuffers();
 	glfwSwapBuffers(m_Window);
-	sampleTime(float(m_FrameTimer.getElapsedTimeFromLastQueryMilliseconds()));	
+	SampleTime(static_cast<float>(m_FrameTimer.getElapsedTimeFromLastQueryMilliseconds()));
 }
 
 //=================================================================================
-void C_ExplerimentWindow::sampleTime(double new_sample) 
+void C_ExperimentWindow::SampleTime(const double newSample)
 {
-	m_Samples.Sample(static_cast<float>(new_sample));
+	m_Samples.Sample(static_cast<float>(newSample));
 }
 
 //=================================================================================
-void C_ExplerimentWindow::OnEvent(Core::I_Event& event)
+void C_ExperimentWindow::OnEvent(Core::I_Event& event)
 {
 	RenderDoc::C_DebugScope s("OnEvent-Fail");
 	// base can make filtering
 	T_Base::OnEvent(event);
 
 	Core::C_EventDispatcher d(event);
-	d.Dispatch<Core::C_KeyPressedEvent>(std::bind(&C_ExplerimentWindow::OnKeyPressed, this, std::placeholders::_1));
-	d.Dispatch<Core::C_AppEvent>(std::bind(&C_ExplerimentWindow::OnAppInit, this, std::placeholders::_1));
-	d.Dispatch<Core::C_WindowResizedEvent>(std::bind(&C_ExplerimentWindow::OnWindowResized, this, std::placeholders::_1));
+	d.Dispatch<Core::C_AppEvent>(std::bind(&C_ExperimentWindow::OnAppEvent, this, std::placeholders::_1));
+	d.Dispatch<Core::C_WindowResizedEvent>(std::bind(&C_ExperimentWindow::OnWindowResized, this, std::placeholders::_1));
 
 	m_LayerStack.OnEvent(event);
+	m_World->OnEvent(event);
 }
 
 //=================================================================================
-bool C_ExplerimentWindow::OnKeyPressed(Core::C_KeyPressedEvent& event)
+void C_ExperimentWindow::OnAppInit()
 {
-	// if (event.GetWindowGUID() != GetGUID()) {
-	// 	return false;
-	// }
-
-
-	return false;
-}
-
-//=================================================================================
-bool C_ExplerimentWindow::OnAppInit(Core::C_AppEvent& event)
-{
+	m_renderer->Commit(); // to upload default textures before anything else
+	m_FrameTimer.reset();
+	m_MainPass = std::make_unique<C_MainPassTechnique>();
 	{
 		using namespace Commands;
-		//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-		m_renderer->AddCommand(
-			std::move(
-				std::make_unique<C_GLEnable>(C_GLEnable::E_GLEnableValues::DEPTH_TEST)
-			)
-		);
-		m_renderer->AddCommand(
-			std::move(
-				std::make_unique<C_GLEnable>(C_GLEnable::E_GLEnableValues::CULL_FACE)
-			)
-		);
-		m_renderer->AddCommand(
-			std::move(
-				std::make_unique<C_GLClearColor>(glm::vec3(1.0f, 1.0f, 1.0f))
-			)
-		);
-		m_renderer->AddCommand(
-			std::move(
-				std::make_unique<C_GLCullFace>(C_GLCullFace::E_FaceMode::Front)
-			)
-		);
+		m_renderer->AddCommand(std::make_unique<C_GLEnable>(C_GLEnable::E_GLEnableValues::DEPTH_TEST));
+		m_renderer->AddCommand(std::make_unique<C_GLEnable>(C_GLEnable::E_GLEnableValues::CULL_FACE));
+		m_renderer->AddCommand(std::make_unique<C_GLEnable>(C_GLEnable::E_GLEnableValues::BLEND));
+		m_renderer->AddCommand(std::make_unique<HACK::C_LambdaCommand>([]() { glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); }));
+		m_renderer->AddCommand(std::make_unique<C_GLClearColor>(Colours::black));
+		m_renderer->AddCommand(std::make_unique<C_GLCullFace>(C_GLCullFace::E_FaceMode::Front));
 	}
 
-	SetupWorld();
+	Buffers::C_UniformBuffersManager::Instance().CreateUniformBuffer<Buffers::UBO::C_ModelData>("modelData");
 
-	auto HDRTexture = std::make_shared<Textures::C_Texture>("hdrTexture");
+	m_RenderInterface
+		= std::make_unique<C_RenderInterface>(Shaders::C_ShaderManager::Instance(), Textures::C_TextureUnitManger::Instance(), *static_cast<C_OGLRenderer*>(m_renderer.get()));
 
-	HDRTexture->bind();
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, GetWidth(), GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
-	HDRTexture->SetFilter(GL_LINEAR, GL_LINEAR);
-	m_HDRFBO.AttachTexture(GL_COLOR_ATTACHMENT0, HDRTexture);
-	HDRTexture->unbind();
+	m_RenderInterfaceHandles   = std::make_unique<C_GLRenderInterface3D>();
+	m_2DRenderInterfaceHandles = std::make_unique<C_GLRendererInterface2D>(glm::uvec2{GetWidth(), GetHeight()});
 
-	auto depthStencilTexture = std::make_shared<Textures::C_Texture>("hdrDepthTexture");
+	SetupWorld("Levels/cornellBox.xml");
 
-	depthStencilTexture->bind();
-	glTexImage2D(
-		GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, GetWidth(), GetHeight(), 0,
-		GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr
-	);
-	depthStencilTexture->SetFilter(GL_LINEAR, GL_LINEAR);
-	m_HDRFBO.AttachTexture(GL_DEPTH_STENCIL_ATTACHMENT, depthStencilTexture);
-	depthStencilTexture->unbind();
-
-
-	return false;
-}
-
-//=================================================================================
-bool C_ExplerimentWindow::OnWindowResized(Core::C_WindowResizedEvent& event)
-{
-	auto HDRTexture = m_HDRFBO.GetAttachement(GL_COLOR_ATTACHMENT0);
-	HDRTexture->bind();
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, event.GetWidth(), event.GetHeight(), 0, GL_RGBA, GL_FLOAT, nullptr);
-	HDRTexture->SetFilter(GL_LINEAR, GL_LINEAR);
-	HDRTexture->unbind();
-
-	auto depthStencilTexture = m_HDRFBO.GetAttachement(GL_DEPTH_STENCIL_ATTACHMENT);
-
-	depthStencilTexture->bind();
-	glTexImage2D(
-		GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, event.GetWidth(), event.GetHeight(), 0,
-		GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr
-	);
-	depthStencilTexture->SetFilter(GL_LINEAR, GL_LINEAR);
-	depthStencilTexture->unbind();
-
-	return true;
-}
-
-//=================================================================================
-void C_ExplerimentWindow::SetupWorld()
-{
-	m_World.LoadLevel("Levels/main.xml", std::make_unique<Components::C_ComponentBuilderFactory>());
+#pragma region FBOSteup
 	{
-		auto player = std::dynamic_pointer_cast<Entity::C_BasicEntity>( m_World.GetEntity("Player"));
-		m_Player = player;
-		float zoom = 5.0f;
-		auto playerCamera = std::make_shared<Cameras::C_OrbitalCamera>();
-		playerCamera->setupCameraProjection(0.1f, 2 * zoom*100, static_cast<float>(GetWidth()) / static_cast<float>(GetHeight()), 90.0f);
-		playerCamera->setupCameraView(zoom, glm::vec3(0.0f), 90, 0);
-		playerCamera->adjustOrientation(20.f, 20.f);
-		playerCamera->Update();
-		player->AddComponent(playerCamera);
-		player->AddComponent(std::make_shared<GUI::C_GLEntityDebugComponent>(player));
-		m_CamManager.ActivateCamera(playerCamera);
+		using namespace Renderer;
+		ResourceManager& rrm		= m_renderer->GetRM();
+		m_HDRFBO					= std::unique_ptr<C_Framebuffer>(m_Device->AllocateFramebuffer("HDR"));
+		const auto gpuSamplerHandle = rrm.createSampler(SamplerDescriptor2D{
+			.m_FilterMin = E_TextureFilter::Linear,
+			.m_FilterMag = E_TextureFilter::Linear,
+			.m_WrapS	 = E_WrapFunction::Repeat,
+			.m_WrapT	 = E_WrapFunction::Repeat,
+			.m_WrapU	 = E_WrapFunction::Repeat,
+		});
+
+		const TextureDescriptor HDRTextureDef{.name			 = "hdrTexture",
+											  .width		 = GetWidth(),
+											  .height		 = GetHeight(),
+											  .type			 = E_TextureType::TEXTURE_2D,
+											  .format		 = E_TextureFormat::RGBA16f,
+											  .m_bStreamable = false};
+		auto					HDRTexture = rrm.createTexture(HDRTextureDef);
+		m_renderer->SetTextureSampler(HDRTexture, gpuSamplerHandle);
+
+		m_HDRFBO->AttachTexture(GL_COLOR_ATTACHMENT0, HDRTexture);
+
+		const TextureDescriptor hdrDepthTextureDef{.name		  = "hdrDepthTexture",
+												   .width		  = GetWidth(),
+												   .height		  = GetHeight(),
+												   .type		  = E_TextureType::TEXTURE_2D,
+												   .format		  = E_TextureFormat::D16,
+												   .m_bStreamable = false};
+		auto					depthStencilTexture = rrm.createTexture(hdrDepthTextureDef);
+
+		// depthStencilTexture->SetTexParameter(GL_COMPARE_REF_TO_TEXTURE, GL_COMPARE_REF_TO_TEXTURE);
+		// depthStencilTexture->SetTexParameter(GL_TEXTURE_COMPARE_FUNC, GL_NEVER);
+		// depthStencilTexture->SetFilter(Renderer::E_TextureFilter::Linear, Renderer::E_TextureFilter::Linear);
+		// ~depthStencilTexture setup
+		m_HDRFBO->AttachTexture(GL_DEPTH_ATTACHMENT, depthStencilTexture);
 	}
-	{
-		// billboard
-		Mesh::Mesh billboardMesh;
-		billboardMesh.vertices.emplace_back(-1.f,  1.f, 0, 1); // 1
-		billboardMesh.vertices.emplace_back(-1.f, -1.f, 0, 1); // 2
-		billboardMesh.vertices.emplace_back( 1.0f, 1.0f, 0, 1); // 3
-		billboardMesh.vertices.emplace_back(-1.f, -1.f, 0, 1); // 4 = 2
-		billboardMesh.vertices.emplace_back( 1.f, -1.f, 0, 1); // 5
-		billboardMesh.vertices.emplace_back( 1.0f, 1.0f, 0, 1); // 6 = 3
-
-
-		billboardMesh.texcoords.emplace_back(0, 1);
-		billboardMesh.texcoords.emplace_back(0, 0);
-		billboardMesh.texcoords.emplace_back(1, 1);
-		billboardMesh.texcoords.emplace_back(0, 0);
-		billboardMesh.texcoords.emplace_back(1, 0);
-		billboardMesh.texcoords.emplace_back(1, 1);
-
-		m_ScreenQuad = std::make_shared<Components::C_StaticMesh>(billboardMesh);
-	}
+#pragma endregion FBOSteup
 
 	auto& guiMGR = m_ImGUI->GetGUIMgr();
 
-	m_ConsoleWindowGUID = NextGUID();
+	// Console window
+	{
+		m_ConsoleWindowGUID = NextGUID();
 
-	auto consoleWindow = new GUI::C_ConsoleWindow(m_ConsoleWindowGUID);
-	guiMGR.AddCustomWindow(consoleWindow);
-	consoleWindow->SetVisible();
+		auto consoleWindow = new GUI::C_ConsoleWindow(m_ConsoleWindowGUID);
+		guiMGR.AddCustomWindow(consoleWindow);
+		consoleWindow->SetVisible();
+	}
+
+
+	{
+		m_EntityEditorGUID = NextGUID();
+
+		auto* entities = new Editor::EntityEditor(m_EntityEditorGUID, guiMGR);
+
+		guiMGR.AddCustomWindow(entities);
+		entities->SetVisible();
+	}
+
+	// Entity window
+	{
+		m_EntitiesWindowGUID = NextGUID();
+
+		auto entitiesWindow = new Editor::C_EntitiesWindow(m_EntitiesWindowGUID, m_World);
+		guiMGR.AddCustomWindow(entitiesWindow);
+		entitiesWindow->SetVisible();
+	}
 
 	m_FrameStatsGUID = guiMGR.CreateGUIWindow("Frame stats");
 	auto* frameStats = guiMGR.GetWindow(m_FrameStatsGUID);
 
-	frameStats->AddComponent(m_GUITexts[static_cast<std::underlying_type_t<E_GUITexts>>(E_GUITexts::AvgFrametime)]);
-	frameStats->AddComponent(m_GUITexts[static_cast<std::underlying_type_t<E_GUITexts>>(E_GUITexts::AvgFps)]);
-	frameStats->AddComponent(m_GUITexts[static_cast<std::underlying_type_t<E_GUITexts>>(E_GUITexts::MinMaxFrametime)]);
+	frameStats->AddComponent(m_GUITexts[::Utils::ToIndex(E_GUITexts::AvgFrametime)]);
+	frameStats->AddComponent(m_GUITexts[::Utils::ToIndex(E_GUITexts::AvgFps)]);
+	frameStats->AddComponent(m_GUITexts[::Utils::ToIndex(E_GUITexts::MinMaxFrametime)]);
 	frameStats->AddComponent(m_Samples);
 	frameStats->AddComponent(m_VSync);
 	frameStats->SetVisible(true);
@@ -496,65 +384,344 @@ void C_ExplerimentWindow::SetupWorld()
 	hdrSettings->AddComponent(m_GammaSlider);
 	hdrSettings->AddComponent(m_ExposureSlider);
 
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItem>("New level", [&]() {
+		m_World->ClearLevel();
+		AddMandatoryWorldParts();
+		return true;
+	}));
 
-	m_HDRWindow = std::make_unique<GUI::Menu::C_MenuItem>("HDR Settings", [HDRGuid = m_HDRSettingsGUID, ImGUI= m_ImGUI]() {
-		auto& guiMGR = ImGUI->GetGUIMgr();
-		if (auto hdrWindow = guiMGR.GetWindow(HDRGuid))
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItem>("Open level", [&]() {
+		const auto levelSelectorGUID = NextGUID();
+		auto*	   levelSelectWindow = new GUI::C_FileDialogWindow(
+			 ".xml", "Select level",
+			 [&, levelSelectorGUID](const std::filesystem::path& level, GUI::C_GUIManager& guiMgr) {
+				 SetupWorld(level);
+				 guiMgr.DestroyWindow(levelSelectorGUID);
+			 },
+			 levelSelectorGUID, "./Levels");
+		guiMGR.AddCustomWindow(levelSelectWindow);
+		levelSelectWindow->SetVisible();
+		return false;
+	}));
+
+	auto& tMGR = Textures::C_TextureManager::Instance();
+	tMGR.GetIdentityTexture()->MakeHandleResident(); // Hack, I need to have active renderer because of lack of dependency injection
+
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItem>("Save Level", [&]() {
+		const auto filename = m_World->GetFilename();
+		if (filename.empty())
 		{
-			hdrWindow->SetVisible(true);
+			SaveLevelAs();
 		}
-		});
-	m_RendererStats = std::make_unique<GUI::Menu::C_MenuItem>("Renderer stats", [HDRGuid = m_HDRSettingsGUID, ImGUI = m_ImGUI]() {
-		auto& guiMGR = ImGUI->GetGUIMgr();
-		if (auto hdrWindow = guiMGR.GetWindow(HDRGuid))
+		else
 		{
-			hdrWindow->SetVisible(true);
+			SaveLevel(filename);
 		}
-		});
-	m_Windows.AddMenuItem(*m_HDRWindow.get());
+		return false;
+	}));
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItem>("Save Level As", std::bind(&C_ExperimentWindow::SaveLevelAs, this)));
+
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItemOpenWindow>("HDR Settings", m_HDRSettingsGUID, guiMGR));
+
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItem>("Ray tracing", [&]() {
+		if (guiMGR.GetWindow(m_RayTraceGUID) != nullptr)
+		{
+			return false;
+		}
+		m_RayTraceGUID = NextGUID();
+
+		auto* rayTraceWindow = new Renderer::C_RayTraceWindow(m_RayTraceGUID, m_CamManager.GetActiveCamera(), guiMGR);
+
+		guiMGR.AddCustomWindow(rayTraceWindow);
+		rayTraceWindow->SetVisible(true);
+		return false;
+	}));
+
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItem>("Water rendering", [&]() {
+		if (guiMGR.GetWindow(m_WaterRenderingGUID) != nullptr)
+		{
+			return false;
+		}
+		m_WaterRenderingGUID = NextGUID();
+
+		auto* waterRendering = new C_WaterRendering(m_WaterRenderingGUID, guiMGR, *m_Device.get());
+
+		guiMGR.AddCustomWindow(waterRendering);
+		waterRendering->SetVisible(true);
+		return false;
+	}));
+
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItem>("Image editor", [&]() {
+		if (guiMGR.GetWindow(m_ImageEditorGUID) != nullptr)
+		{
+			return false;
+		}
+		m_ImageEditorGUID = NextGUID();
+
+		auto* imageEditorWindow = new Editor::C_ImageEditor(m_ImageEditorGUID, guiMGR);
+
+		guiMGR.AddCustomWindow(imageEditorWindow);
+		imageEditorWindow->SetVisible(true);
+		return false;
+	}));
+
+	const auto rendererWindow = dynamic_cast<C_OGLRenderer*>(m_renderer.get())->SetupControls(guiMGR);
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItemOpenWindow>("Renderer", rendererWindow, guiMGR));
+
+	const auto camManager = m_CamManager.SetupControls(guiMGR);
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItemOpenWindow>("Camera manager", camManager, guiMGR));
+
+	const auto materialManager = Renderer::C_MaterialManager::Instance().SetupControls(guiMGR);
+	m_Windows.AddMenuItem(guiMGR.CreateMenuItem<GUI::Menu::C_MenuItemOpenWindow>("Material manager", materialManager, guiMGR));
+
+	CORE_LOG(E_Level::Info, E_Context::Render, "Experiment window setup time was {}", static_cast<float>(m_FrameTimer.getElapsedTimeFromLastQueryMilliseconds()) / 1000.f);
 }
 
 //=================================================================================
-void C_ExplerimentWindow::MouseSelect()
+bool C_ExperimentWindow::OnWindowResized(Core::C_WindowResizedEvent& event)
 {
-	if (m_ImGUI->CapturingMouse()) {
+	GLE_TODO("26-12-2024", "RohacekD", "Get descriptors from handles instead for more API agnostic approach");
+	auto& glRM = dynamic_cast<C_OGLRenderer*>(m_renderer.get())->GetRMGR();
+	{
+		GLE_TODO("26-12-2024", "RohacekD", "Preserve sampler");
+		auto						HDRTextureHandle = m_HDRFBO->GetAttachment(GL_COLOR_ATTACHMENT0);
+		auto*						HDRTexture		 = glRM.GetTexture(HDRTextureHandle);
+		Renderer::TextureDescriptor descHDR			 = HDRTexture->GetDescriptor();
+		descHDR.width								 = event.GetWidth();
+		descHDR.height								 = event.GetHeight();
+
+		glRM.destoryTexture(HDRTextureHandle);
+		HDRTextureHandle = glRM.createTexture(descHDR);
+
+		m_HDRFBO->AttachTexture(GL_COLOR_ATTACHMENT0, HDRTextureHandle);
+	}
+
+	{
+		auto						depthStencilTextureHandle = m_HDRFBO->GetAttachment(GL_DEPTH_ATTACHMENT);
+		auto*						depthStencilTexture		  = glRM.GetTexture(depthStencilTextureHandle);
+		Renderer::TextureDescriptor descDepth				  = depthStencilTexture->GetDescriptor();
+		descDepth.width										  = event.GetWidth();
+		descDepth.height									  = event.GetHeight();
+
+		glRM.destoryTexture(depthStencilTextureHandle);
+		depthStencilTextureHandle = glRM.createTexture(descDepth);
+
+		m_HDRFBO->AttachTexture(GL_DEPTH_ATTACHMENT, depthStencilTextureHandle);
+	}
+
+	if (m_HDRFBOAtmosphere)
+	{
+		auto						HDRTextureHandle = m_HDRFBOAtmosphere->GetAttachment(GL_COLOR_ATTACHMENT0);
+		auto*						HDRTexture		 = glRM.GetTexture(HDRTextureHandle);
+		Renderer::TextureDescriptor descHDR			 = HDRTexture->GetDescriptor();
+		descHDR.width								 = event.GetWidth();
+		descHDR.height								 = event.GetHeight();
+
+		glRM.destoryTexture(HDRTextureHandle);
+		HDRTextureHandle = glRM.createTexture(descHDR);
+
+		m_HDRFBOAtmosphere->AttachTexture(GL_COLOR_ATTACHMENT0, HDRTextureHandle);
+	}
+
+	m_EditorLayer.SetViewport({0, 0, GetSize()});
+
+	return true;
+}
+
+//=================================================================================
+void C_ExperimentWindow::SetupWorld(const std::filesystem::path& level)
+{
+	pugi::xml_document doc;
+
+	pugi::xml_parse_result result = doc.load_file(level.c_str());
+	if (!result.status == pugi::status_ok)
+	{
+		CORE_LOG(E_Level::Error, E_Context::Core, "Can't open config file for level name: {}", level);
+		return;
+	}
+
+	Utils::C_XMLDeserializer d(Core::C_ResourceManager::Instance());
+	auto					 newWorld = d.Deserialize<std::shared_ptr<Entity::C_EntityManager>>(doc);
+	if (newWorld.has_value() == false)
+	{
+		CORE_LOG(E_Level::Error, E_Context::Core, "XML {} is not valid level.", level);
+		return;
+	}
+	m_World.swap(newWorld.value());
+	m_World->SetFilename(level);
+
+	const auto& guiMGR		= m_ImGUI->GetGUIMgr();
+	auto*		entitiesWnd = guiMGR.GetWindow(m_EntitiesWindowGUID);
+	if (auto* entitiesWindow = dynamic_cast<Editor::C_EntitiesWindow*>(entitiesWnd))
+	{
+		entitiesWindow->SetWorld(m_World);
+	}
+
+	AddMandatoryWorldParts();
+
+	// Inform entities about the level loaded event
+	Core::C_EntityEvent levelEvent(GUID::INVALID_GUID, Core::C_EntityEvent::EntityEvent::LevelLoaded);
+	m_World->OnEvent(levelEvent);
+
+	// FBO for atmosphere
+	if (m_World->GetEntity("atmosphere"))
+	{
+		using namespace Renderer;
+		ResourceManager& rrm			  = m_renderer->GetRM();
+		const auto		 gpuSamplerHandle = rrm.createSampler(SamplerDescriptor2D{
+				  .m_FilterMin = E_TextureFilter::Linear,
+				  .m_FilterMag = E_TextureFilter::Linear,
+				  .m_WrapS	   = E_WrapFunction::Repeat,
+				  .m_WrapT	   = E_WrapFunction::Repeat,
+				  .m_WrapU	   = E_WrapFunction::Repeat,
+		  });
+		m_HDRFBOAtmosphere				  = std::unique_ptr<C_Framebuffer>(m_Device->AllocateFramebuffer("Atmosphere"));
+		const TextureDescriptor HDRTextureDef{.name			 = "hdrTextureAtmosphere",
+											  .width		 = GetWidth(),
+											  .height		 = GetHeight(),
+											  .type			 = E_TextureType::TEXTURE_2D,
+											  .format		 = E_TextureFormat::RGBA16f,
+											  .m_bStreamable = false};
+		const auto				HDRTexture = rrm.createTexture(HDRTextureDef);
+		m_renderer->SetTextureSampler(HDRTexture, gpuSamplerHandle);
+		m_HDRFBOAtmosphere->AttachTexture(GL_COLOR_ATTACHMENT0, HDRTexture);
+	}
+	else
+	{
+		m_HDRFBOAtmosphere = nullptr;
+	}
+}
+
+//=================================================================================
+void C_ExperimentWindow::SaveLevel(const std::filesystem::path& filename)
+{
+	Utils::C_XMLSerializer s;
+	const auto			   str = s.Serialize(m_World);
+	m_World->SetFilename(filename);
+	str.save_file(filename.c_str());
+}
+
+//=================================================================================
+bool C_ExperimentWindow::SaveLevelAs()
+{
+	auto&	   guiMGR			 = m_ImGUI->GetGUIMgr();
+	const auto levelSelectorGUID = NextGUID();
+	auto*	   levelPathSelect	 = new GUI::C_FileDialogWindow(
+		   ".xml", "Select level",
+		   [&, levelSelectorGUID](const std::filesystem::path& level, GUI::C_GUIManager& guiMgr) {
+			   SaveLevel(level);
+			   guiMgr.DestroyWindow(levelSelectorGUID);
+		   },
+		   levelSelectorGUID, "./Levels");
+	guiMGR.AddCustomWindow(levelPathSelect);
+	levelPathSelect->SetVisible();
+	return false;
+}
+
+//=================================================================================
+void C_ExperimentWindow::AddMandatoryWorldParts()
+{
+	m_Player = m_World->GetOrCreateEntity("Player");
+
+	auto player = m_Player.lock();
+	if (player)
+	{
+		const auto cameras = player->GetComponents(Entity::E_ComponentType::Camera);
+		for (auto i = cameras.size(); i < 2; ++i)
+		{
+			constexpr float zoom		 = 5.0f;
+			auto			playerCamera = std::make_shared<Renderer::Cameras::C_OrbitalCamera>(player);
+			playerCamera->SetupCameraProjection(0.1f, 2 * zoom * 100, static_cast<float>(GetWidth()) / static_cast<float>(GetHeight()), 90.0f);
+			playerCamera->SetupCameraView(zoom, glm::vec3(0.0f), 90, 0);
+			playerCamera->Update();
+			player->AddComponent(playerCamera);
+		}
+		auto camIt = player->GetComponents(Entity::E_ComponentType::Camera).begin();
+		m_CamManager.ActivateCamera(std::static_pointer_cast<Renderer::I_CameraComponent>(*camIt));
+		++camIt;
+		m_CamManager.SetDebugCamera(std::static_pointer_cast<Renderer::I_CameraComponent>(*camIt));
+	}
+
+	{
+		// create default atmosphere
+		const auto entity = m_World->GetEntity("atmosphere");
+		if (entity)
+		{
+			if (const auto sunLight = entity->GetComponent<Entity::E_ComponentType::Light>())
+			{
+				m_SunShadow = std::make_shared<C_SunShadowMapTechnique>(std::static_pointer_cast<Renderer::C_SunLight>(sunLight));
+			}
+			else
+			{
+				m_SunShadow.reset();
+			}
+		}
+		else
+		{
+			m_SunShadow.reset();
+		}
+	}
+}
+
+//=================================================================================
+void C_ExperimentWindow::MouseSelect()
+{
+	// this code should go to the editor layer one day
+	if (m_ImGUI->CapturingMouse())
+	{
 		return;
 	}
 
 	auto screenCoord = GetInput().GetMousePosition();
-	auto camera = m_CamManager.GetActiveCamera();
+	auto camera		 = m_CamManager.GetActiveCamera();
 
-	float x = (2.0f * screenCoord.first) / GetWidth() - 1.0f;
-	float y = 1.0f - (2.0f * screenCoord.second) / GetHeight();
-	float z = 1.0f;
-	glm::vec3 ray_nds = glm::vec3(x, y, z);
-	glm::vec4 ray_clip = glm::vec4(ray_nds.x, ray_nds.y, -1.0, 1.0);
-	glm::vec4 ray_eye = glm::inverse(camera->GetProjectionMatrix()) * ray_clip;
-	ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0, 0.0);
+	const auto clipPosition = ToClipSpace({screenCoord.first, screenCoord.second});
 
-	glm::vec4 ray_wor = glm::inverse(camera->GetViewMatrix()) * ray_eye;
-	// don't forget to normalise the vector at some point
-	ray_wor = glm::normalize(ray_wor);
-	glm::vec4 cameraOrigin = glm::vec4(camera->GetPosition(), 1.0f);
+	using namespace Physics::Primitives;
+	const auto ray = camera->GetRay(clipPosition);
 
-	C_PersistentDebug::Instance().DrawLine(cameraOrigin, cameraOrigin + ray_wor, glm::vec3(0, 1, 0));
+	C_PersistentDebug::Instance().DrawLine(ray.origin, ray.origin + ray.direction, Colours::green);
+	const S_RayIntersection inter = m_World->Select(ray);
+	if (inter.distance > 0)
 	{
-		using namespace Physics::Primitives;
-		S_Ray ray;
-		ray.origin = cameraOrigin;
-		ray.direction = ray_wor;
-		S_RayIntersection inter = m_World.Select(ray);
-		if (inter.distance > 0) {
-			auto entity = m_World.GetEntity(inter.entityId);
-			if (entity) {
-				entity->OnEvent(Core::C_UserEvent("selected"));
-			}
-			//std::static_pointer_cast<Cameras::C_OrbitalCamera>(camera)->setCenterPoint(inter.intersectionPoint);
-			//std::static_pointer_cast<Cameras::C_OrbitalCamera>(camera)->update();
+		auto entity = m_World->GetEntity(inter.entityId);
+		if (entity)
+		{
+			// todo: entities window needs to know that as well
+			Core::C_EntityEvent event(entity->GetID(), Core::C_EntityEvent::EntityEvent::Selected);
+			entity->OnEvent(event);
 		}
 	}
 }
 
+//=================================================================================
+bool C_ExperimentWindow::OnAppEvent(Core::C_AppEvent& event)
+{
+	if (event.GetEventType() == Core::C_AppEvent::E_Type::AppInit)
+	{
+		OnAppInit();
+		return true;
+	}
+	if (event.GetEventType() == Core::C_AppEvent::E_Type::WindowCloseRequest)
+	{
+		m_World->ClearLevel();
+		auto& guiMGR = m_ImGUI->GetGUIMgr();
+		guiMGR.DestroyWindow(m_EntitiesWindowGUID);
+		guiMGR.DestroyWindow(m_RayTraceGUID);
+		guiMGR.DestroyWindow(m_WaterRenderingGUID);
+		guiMGR.DestroyWindow(m_ConsoleWindowGUID);
+		guiMGR.DestroyWindow(m_FrameStatsGUID);
+		guiMGR.DestroyWindow(m_HDRSettingsGUID);
+		m_ImGUI->OnDetach();
+	}
+
+	return false;
 }
+
+//=================================================================================
+bool C_ExperimentWindow::CanClose() const
+{
+	return m_LayerStack.ReadyForDestroy();
 }
-}
+
+} // namespace GLEngine::GLRenderer::Windows

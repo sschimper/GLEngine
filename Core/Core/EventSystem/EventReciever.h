@@ -1,17 +1,14 @@
 #pragma once
 
-#include <CoreStdafx.h>
+#include <Core/CoreApi.h>
 
-#include <Core/EventSystem/Event.h>
+namespace GLEngine::Core {
+class I_Event;
 
-namespace GLEngine {
-namespace Core {
-
-class CORE_API_EXPORT I_EventReciever {
+class CORE_API_EXPORT I_EventReceiver {
 public:
-	virtual ~I_EventReciever() = default;
-	virtual void OnEvent(Core::I_Event& event) = 0;
+	virtual ~I_EventReceiver();
+	virtual void OnEvent(I_Event& event) = 0;
 };
 
-}
-}
+} // namespace GLEngine::Core

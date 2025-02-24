@@ -3,8 +3,7 @@
 
 #include <iostream>
 
-namespace Utils {
-namespace Logging {
+namespace Utils::Logging {
 
 //=================================================================================
 void C_CoutLogger::Log(E_Level level, E_Context context, int line, const char* file, const std::string& text)
@@ -13,7 +12,7 @@ void C_CoutLogger::Log(E_Level level, E_Context context, int line, const char* f
 }
 
 //=================================================================================
-C_FileLogger::C_FileLogger(const std::string& filename)
+C_FileLogger::C_FileLogger(const std::filesystem::path& filename)
 	: m_file(new std::remove_pointer<decltype(m_file)>::type)
 {
 	m_file->open(filename);
@@ -32,5 +31,4 @@ void C_FileLogger::Log(E_Level level, E_Context context, int line, const char* f
 	(*m_file) << file << ":" << line << "(" << level << "," << context << "): " << text << "\n";
 }
 
-}
-}
+} // namespace Utils::Logging

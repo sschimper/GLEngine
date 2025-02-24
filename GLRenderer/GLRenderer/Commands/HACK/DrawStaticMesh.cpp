@@ -1,19 +1,16 @@
 #include <GLRendererStdafx.h>
 
 #include <GLRenderer/Commands/HACK/DrawStaticMesh.h>
-
 #include <GLRenderer/Mesh/StaticMeshResource.h>
 
 
-namespace GLEngine {
-namespace GLRenderer {
-namespace Commands {
-namespace HACK {
+namespace GLEngine::GLRenderer::Commands::HACK {
 
 //=================================================================================
 C_DrawStaticMesh::C_DrawStaticMesh(std::shared_ptr<Mesh::C_StaticMeshResource> mesh)
 	: m_Mesh(mesh)
-{}
+{
+}
 
 //=================================================================================
 void C_DrawStaticMesh::Commit()
@@ -30,9 +27,9 @@ Renderer::I_RenderCommand::E_Type C_DrawStaticMesh::GetType() const
 }
 
 //=================================================================================
-std::shared_ptr<Renderer::I_Resource> C_DrawStaticMesh::GetResource() const
+std::string C_DrawStaticMesh::GetDescriptor() const
 {
-	return m_Mesh;
+	return fmt::format("DrawStaticMesh tris: {}", m_Mesh->GetNumTriangles());
 }
 
-}}}}
+} // namespace GLEngine::GLRenderer::Commands::HACK

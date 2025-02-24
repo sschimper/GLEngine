@@ -3,7 +3,7 @@
  * \file 		Texture.h
  * \date 		2018/03/17 19:07
  * \project 	Computer Graphics Project
- * \faculty 	Faculty of Information Technology 
+ * \faculty 	Faculty of Information Technology
  * \university 	Brno University of Technology
  *
  * \author Dominik Rohacek
@@ -13,56 +13,94 @@
 
 #pragma once
 
-#include <Renderer/IResource.h>
-
 #include <GLRenderer/Helpers/OpenGLTypesHelpers.h>
+#include <GLRenderer/Helpers/TextureHelpers.h>
+#include <GLRenderer/Textures/Sampler.h>
 
-namespace GLEngine {
-namespace GLRenderer {
+#include <Renderer/Descriptors/TextureDescriptor.h>
+#include <Renderer/Resources/RenderResourceHandle.h>
+#include <Renderer/Textures/DeviceTexture.h>
+
+#include <rttr/registration_friend.h>
+
+namespace GLEngine::Renderer {
+class I_TextureViewStorage;
+class C_TextureView;
+} // namespace GLEngine::Renderer
+
+namespace GLEngine::GLRenderer {
+class C_GLDevice;
 namespace Mesh {
 struct Texture;
 }
 
 namespace Textures {
-class C_Texture// : public Renderer::I_Resource
-{
+using T_TexBufferFuture = std::future<std::unique_ptr<Renderer::I_TextureViewStorage>>;
+class C_Texture : public Renderer::I_DeviceTexture {
 public:
-	C_Texture(GLenum target = GL_TEXTURE_2D);
-	C_Texture(const std::string& name, GLenum target = GL_TEXTURE_2D);
+	explicit C_Texture(const Renderer::TextureDescriptor& desc);
 	C_Texture(const C_Texture&) = delete;
-	C_Texture(C_Texture&& t);
-	virtual ~C_Texture();
+	C_Texture(C_Texture&& t) noexcept;
+	void operator=(C_Texture&& rhs) noexcept;
+	~C_Texture() override;
 
+	[[nodiscard]] bool IsAllocated() const override;
+	void			   SetReadyToUse() { m_IsPresentOnGPU = true; }
+	bool			   IsPresentOnGPU() const { return m_IsPresentOnGPU; }
+
+	// TODO move to Commands or remove due to new API
 	void bind() const;
 	void unbind() const;
 
-	inline void StartGroupOp() { bind(); m_bGroupOperations = true; }
-	inline void EndGroupOp() { m_bGroupOperations = false; unbind(); }
+	[[nodiscard]] glm::uvec2 GetDimensions() const override { return {m_Desc.width, m_Desc.height}; }
+	void					 SetWidth(const unsigned int width) { m_Desc.width = width; }
+	void					 SetHeight(const unsigned int height) { m_Desc.height = height; }
+	void					 SetName(std::string name);
+	std::string				 GetName();
 
-	inline unsigned int GetWidth() const { return m_Dimensions.x; }
-	inline unsigned int GetHeight() const { return m_Dimensions.y; }
-	inline void SetWidth(unsigned int width) { m_Dimensions.x = width; }
-	inline void SetHeight(unsigned int height) { m_Dimensions.y = height; }
-	inline const glm::uvec2& GetDimensions() const { return m_Dimensions; }
-	inline void SetDimensions(const glm::uvec2& dim) { m_Dimensions = dim; }
+	[[nodiscard]] void* GetDeviceTextureHandle() const override;
+	// just for now
+	void				 SetGPUID(GLuint ID) { m_Texture = ID; }
+	[[nodiscard]] GLuint GetTexture() const { return m_Texture; }
+	[[nodiscard]] GLuint GetDefaultSampler() const { return m_DefaultSampler.m_Sampler; }
+	[[nodiscard]] GLenum GetTarget() const { return GetTextureType(m_Desc.type); }
 
-	//just for now
-	inline GLuint GetTexture() const { return m_texture; }
-	inline GLenum GetTarget() const { return m_target; }
+	[[nodiscard]] T_TexBufferFuture GetTextureData() const override;
 
-	void SetWrap(E_WrapFunction wrapS, E_WrapFunction wrapT);
-	void SetWrap(E_WrapFunction wrapS, E_WrapFunction wrapT, E_WrapFunction wrapR);
-	void SetFilter(GLint min, GLint mag);
-	void SetTexParameter(GLenum pname, const glm::vec4& value);
-	void SetTexParameter(GLenum pname, GLint value);
-	void GenerateMipMaps();
+	[[nodiscard]] std::uint64_t CreateHandle();
+	[[nodiscard]] std::uint64_t GetHandle() const;
+	void						MakeHandleResident(bool val = true);
 
-	void SetTexData2D(int level, const Mesh::Texture& tex);
+	void SetWrap(Renderer::E_WrapFunction wrapS, Renderer::E_WrapFunction wrapT) override;
+	void SetWrap(Renderer::E_WrapFunction wrapS, Renderer::E_WrapFunction wrapT, Renderer::E_WrapFunction wrapR) override;
+	void SetFilter(Renderer::E_TextureFilter min, Renderer::E_TextureFilter mag) override;
+	void SetBorderColor(const glm::vec4& color) override;
+	void GenerateMipMaps() override;
+	void SetParameter(GLenum pname, const glm::vec4& value);
+	void SetParameter(GLenum pname, GLint value);
+
+	void SetTexData2D(int level, const Renderer::I_TextureViewStorage* tex) override;
+	void SetTexData2D(int level, const Renderer::C_TextureView tex) override;
+
+	void* GetGPUHandle() override;
+	void  SetSampler(Renderer::Handle<Renderer::Sampler> handle);
+
+	friend class C_TextureManager;
+	friend class ::GLEngine::GLRenderer::C_GLDevice;
+
+	RTTR_ENABLE(Renderer::I_DeviceTexture);
+	RTTR_REGISTRATION_FRIEND;
 
 protected:
-	GLuint m_texture;
-	GLenum m_target;
-	glm::uvec2 m_Dimensions;
-	bool m_bGroupOperations : 1;
+	void Clean();
+
+
+	GLuint		  m_Texture;
+	bool		  m_IsPresentOnGPU = false;
+	bool		  m_IsResident	   = false;
+	std::uint64_t m_Handle;
+
+	C_Sampler2D m_DefaultSampler;
 };
-}}}
+} // namespace Textures
+} // namespace GLEngine::GLRenderer

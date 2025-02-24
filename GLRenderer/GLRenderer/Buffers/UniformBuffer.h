@@ -3,7 +3,7 @@
  * \file 		UniformBuffer.h
  * \date 		2018/03/17 19:07
  * \project 	Computer Graphics Project
- * \faculty 	Faculty of Information Technology 
+ * \faculty 	Faculty of Information Technology
  * \university 	Brno University of Technology
  *
  * \author Dominik Rohacek
@@ -15,33 +15,30 @@
 
 #include <GLRenderer/Buffers/GLBuffer.h>
 
-#include <glad/glad.h>
-
-#include <string>
-
-namespace GLEngine {
-namespace GLRenderer {
-namespace Buffers {
+namespace GLEngine::GLRenderer::Buffers {
 class C_UniformBuffer : public C_GLBuffer<GL_UNIFORM_BUFFER> {
 public:
+	using T_Base = C_GLBuffer<GL_UNIFORM_BUFFER>;
 	C_UniformBuffer(const std::string& blockName, unsigned int index);
-	virtual ~C_UniformBuffer() = default;
+	~C_UniformBuffer() override = default;
 
-	virtual void bind() const override;
+	void AllocateMemory(bool dynamicUsage, const void* initialData = nullptr);
 
-	virtual void UploadData() const = 0;
+	virtual void					  UploadData() const	= 0;
+	[[nodiscard]] virtual std::size_t GetBufferSize() const = 0;
 
-	void Activate(bool activate = true);
+	void		Activate(bool activate = true);
 	inline bool IsActive() const { return m_active; }
 
 	const std::string& GetBlockName() const { return m_blockName; }
-	int GetBinding() const { return GetIndex(); }
+	int				   GetBinding() const { return GetIndex(); }
 
 	GLuint GetIndex() const { return m_index; }
-	void SetIndex(GLuint val) { m_index = val; }
+	void   SetIndex(GLuint val) { m_index = val; }
+
 private:
-	GLuint m_index;
+	GLuint		m_index;
 	std::string m_blockName;
-	bool m_active;
+	bool		m_active;
 };
-}}}
+} // namespace GLEngine::GLRenderer::Buffers

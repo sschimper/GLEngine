@@ -1,29 +1,30 @@
 #pragma once
 
-#include <Renderer/IRenderCommand.h>
-
 #include <GLRenderer/Helpers/OpenGLTypesHelpers.h>
+
+#include <Renderer/IRenderCommand.h>
 
 namespace GLEngine::GLRenderer::Commands {
 
-template<E_FramebufferTarget framebuffer>
-class C_GLBindFramebuffer : public Renderer::I_RenderCommand {
+template <E_FramebufferTarget Framebuffer> class C_GLBindFramebuffer final : public Renderer::I_RenderCommand {
 public:
-	C_GLBindFramebuffer(GLuint FBO);
+	explicit C_GLBindFramebuffer(GLuint FBO);
 
 
 	//=================================================================================
 	// Renderer::I_RenderCommand
 	//=================================================================================
-	virtual void Commit() override;
-	virtual E_Type GetType() const override;
-	virtual std::shared_ptr<Renderer::I_Resource> GetResource() const override;
+	void   Commit() override;
+	E_Type GetType() const override;
+
+
+	//=================================================================================
+	[[nodiscard]] std::string GetDescriptor() const override { return std::string("BindFramebuffer") + std::to_string(m_FBO); }
 
 private:
-	E_FramebufferTarget m_Target;
-	GLuint				m_FBO;
+	GLuint m_FBO;
 };
 
-}
+} // namespace GLEngine::GLRenderer::Commands
 
 #include <GLRenderer/Commands/FBO/GLBindFramebuffer.inl>

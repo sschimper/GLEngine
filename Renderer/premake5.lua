@@ -1,4 +1,4 @@
-include "../premakeDefines.lua"
+include "../Tools/Premake5/premakeDefines.lua"
 
 project "Renderer"
 	kind "SharedLib"
@@ -6,36 +6,44 @@ project "Renderer"
 	staticruntime "off"
 	
 	SetupProject("Renderer")
+	
+	PrecompiledHeaders("Renderer")
+	
+	Link("Utils")
+	Link("Entity")
+	Link("Core")
+	Link("GUI")
+--	Link("Animation")
+	
+	LinkDependency("Assimp")
+	LinkDependency("ImGui")
+	LinkDependency("pugixml")
+	LinkDependency("RTTR")
 
 	includedirs
 	{
-		"../Core",
-		"../GLRenderer",
-		"../Entity",
-		"../Physics",
-		"../%{IncludeDir.GLM}",
-		"../%{IncludeDir.fmt}",
+		"%{wks.location}/Physics",
+		"%{wks.location}/%{IncludeDir.GLM}",
+		"%{wks.location}/%{IncludeDir.GLFW}",
+		"%{wks.location}/%{IncludeDir.fmt}",
+		"%{wks.location}/%{IncludeDir.DevIL}",
+		"%{wks.location}/%{IncludeDir.slot_map}",
+
+		"%{wks.location}/vendor/projects/Assimp"
+	}
+
+	links 
+	{
+		"DevIL-IL",
 	}
 
 	filter "system:windows"
-		cppdialect "C++17"
-		systemversion "latest"
-
 		defines
 		{
-			"CORE_PLATFORM=CORE_PLATFORM_WIN",
 			"BUILD_RENDERER_DLL",
 		}
 
 		postbuildcommands
 		{
-			("{COPY} %{cfg.buildtarget.relpath} \"../bin/" .. outputdir .. "/Sandbox/\"")
+			("{COPY} %{cfg.buildtarget.relpath} \"%{wks.location}/bin/" .. outputdir .. "/Sandbox/\""),
 		}
-
-	filter "configurations:Debug"
-		runtime "Debug"
-		symbols "On"
-
-	filter "configurations:Release"
-		runtime "Release"
-		optimize "On"

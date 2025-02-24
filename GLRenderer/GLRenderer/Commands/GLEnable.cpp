@@ -3,15 +3,12 @@
 #include <GLRenderer/Commands/GLEnable.h>
 
 
-namespace GLEngine {
-namespace GLRenderer {
-namespace Commands {
+namespace GLEngine::GLRenderer::Commands {
 
 //=================================================================================
 C_GLEnable::C_GLEnable(E_GLEnableValues value)
 	: m_Value(value)
 {
-
 }
 
 //=================================================================================
@@ -26,4 +23,10 @@ Renderer::I_RenderCommand::E_Type C_GLEnable::GetType() const
 	return E_Type::StateChange;
 }
 
-}}}
+//=================================================================================
+std::string C_GLEnable::GetDescriptor() const
+{
+	return std::string("GLEnable");
+}
+
+} // namespace GLEngine::GLRenderer::Commands

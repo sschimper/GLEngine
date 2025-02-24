@@ -1,4 +1,4 @@
-include "../premakeDefines.lua"
+include "../Tools/Premake5/premakeDefines.lua"
 
 project "Core"
 	kind "SharedLib"
@@ -10,35 +10,22 @@ project "Core"
 	PrecompiledHeaders("Core")
 
 	Link("Utils")
+	links {"uuid"}
+	LinkDependency("crossguid")
+	LinkDependency("RTTR")
+	LinkDependency("pugixml")
 
 	includedirs
 	{
-		"../Renderer/",
-		"../GLRenderer/",
-		"../%{IncludeDir.GLFW}",
 		"../%{IncludeDir.GLM}",
 		"../%{IncludeDir.fmt}",
+		"../Physics",
 	}
 
 	filter "system:windows"
-		cppdialect "C++17"
 		systemversion "latest"
-
-		defines
-		{
-			"CORE_PLATFORM=CORE_PLATFORM_WIN",
-			"BUILD_CORE_DLL",
-		}
 
 		postbuildcommands
 		{
-			("{COPY} %{cfg.buildtarget.relpath} \"../bin/" .. outputdir .. "/Sandbox/\"")
+			("{COPY} %{cfg.buildtarget.relpath} \"%{wks.location}/bin/" .. outputdir .. "/Sandbox/\"")
 		}
-
-	filter "configurations:Debug"
-		runtime "Debug"
-		symbols "On"
-
-	filter "configurations:Release"
-		runtime "Release"
-		optimize "On"

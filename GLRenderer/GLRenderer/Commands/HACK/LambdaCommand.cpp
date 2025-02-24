@@ -6,26 +6,21 @@
 
 #include <Core/Application.h>
 
-namespace GLEngine {
-namespace GLRenderer {
-namespace Commands {
-namespace HACK {
-
-
+namespace GLEngine::GLRenderer::Commands::HACK {
 //=================================================================================
-C_LambdaCommand::C_LambdaCommand(std::function<void(void)> fnc)
-	: m_fnc(fnc)
+C_LambdaCommand::C_LambdaCommand(const std::function<void(void)>& fnc, const std::string& name)
+	: m_Name(name)
+	, m_fnc(fnc)
 {
-
 }
 
 //=================================================================================
 void C_LambdaCommand::Commit()
 {
 	// even though this is hack, I would like to stay sane
-	Core::C_Application::Get().GetActiveRenderer()->Lock(true);
+	Core::C_Application::Get().GetActiveRenderer().Lock(true);
 	m_fnc();
-	Core::C_Application::Get().GetActiveRenderer()->Lock(false);
+	Core::C_Application::Get().GetActiveRenderer().Lock(false);
 }
 
 //=================================================================================
@@ -35,9 +30,9 @@ Renderer::I_RenderCommand::E_Type C_LambdaCommand::GetType() const
 }
 
 //=================================================================================
-std::shared_ptr<Renderer::I_Resource> C_LambdaCommand::GetResource() const
+std::string C_LambdaCommand::GetDescriptor() const
 {
-	return nullptr;
+	return m_Name;
 }
 
-}}}}
+} // namespace GLEngine::GLRenderer::Commands::HACK

@@ -1,22 +1,31 @@
 #pragma once
 
-#include <Core/CoreMacros.h>
+#include <Core/CoreApi.h>
 
-#include <utility>
+namespace GLEngine::Core {
 
-namespace GLEngine {
-namespace Core {
-
-class I_Input {
+class CORE_API_EXPORT I_Input {
 public:
-	virtual ~I_Input() = default;
+	virtual ~I_Input();
 
-	virtual bool IsKeyPressed(int keycode) const = 0;
-	virtual bool IsMosueButtonPresse(int key) const = 0;
-	virtual std::pair<float, float> GetMousePosition() const = 0;
-	virtual float GetMouseX() const = 0;
-	virtual float GetMouseY() const = 0;
+	enum class E_MouseCursor : std::uint8_t{
+		Arrow,
+		Hand,
+		TextInput,
+		NSResize,
+		WEResize,
+		Crosshair,
+		Count,
+	};
+
+	[[nodiscard]] virtual bool					  IsKeyPressed(int keycode) const	  = 0;
+	[[nodiscard]] virtual bool					  IsMouseButtonPressed(int key) const = 0;
+	[[nodiscard]] virtual std::pair<float, float> GetMousePosition() const			  = 0;
+	[[nodiscard]] virtual glm::vec2				  GetClipSpaceMouseCoord() const	  = 0;
+	[[nodiscard]] virtual float					  GetMouseX() const					  = 0;
+	[[nodiscard]] virtual float					  GetMouseY() const					  = 0;
+
+	virtual void SetMouseCursor(E_MouseCursor cursor) = 0;
 };
 
-}
-}
+} // namespace GLEngine::Core

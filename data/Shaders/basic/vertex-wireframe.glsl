@@ -1,18 +1,18 @@
-#version 330
+#version 430
 
-in vec4 vertex;
+layout (location = 0) in vec4 vertex;
 
-//per frame
+// per frame
 #include "../include/frameConstants.glsl"
 
-//per model
+// per model
 uniform mat4 modelMatrix;
 uniform vec3 colorIN;
 
-out vec3 colorOUT;
+layout (location = 1) out vec3 colorOUT;
 
 void main()
 {
-	colorOUT = colorIN;
-    gl_Position = frame.viewProjectionMatrix * modelMatrix * vertex;
+	colorOUT	= colorIN;
+	gl_Position = frame.viewProjectionMatrix * modelMatrix * vertex;
 }

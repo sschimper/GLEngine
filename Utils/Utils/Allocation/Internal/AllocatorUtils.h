@@ -1,9 +1,7 @@
 #pragma once
 
-
-namespace Utils::Allocation { 
-template<class T, std::size_t alignment>
-class C_AllocatorUtils {
+namespace Utils::Allocation {
+template <class T, std::size_t alignment> class C_AllocatorUtils {
 public:
 	//=================================================================================
 	static typename T::size_type roundToAligned(typename T::size_type n)
@@ -21,4 +19,4 @@ public:
 	}
 };
 
-}
+} // namespace Utils::Allocation

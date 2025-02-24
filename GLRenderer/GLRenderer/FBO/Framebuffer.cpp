@@ -1,9 +1,6 @@
 #include <GLRendererStdafx.h>
 
 #include <GLRenderer/FBO/Framebuffer.h>
-#include <GLRenderer/Textures/Texture.h>
-
-#include <GLRenderer/Commands/FBO/glFramebufferTexture.h>
 
 #include <Renderer/IRenderer.h>
 
@@ -12,39 +9,52 @@
 namespace GLEngine::GLRenderer {
 
 //=================================================================================
-C_Framebuffer::C_Framebuffer(const std::string& name)
+C_Framebuffer::C_Framebuffer(const std::string_view name, const bool defaultRenderTarget)
+	: m_FBO(0)
+	, m_DirtyFlag(true)
 {
-	glGenFramebuffers(1, &m_FBO);
-	glObjectLabel(GL_FRAMEBUFFER, m_FBO, static_cast<GLsizei>(name.length()), name.c_str());
+	if (!defaultRenderTarget)
+	{
+		glGenFramebuffers(1, &m_FBO);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
+		glObjectLabel(GL_FRAMEBUFFER, m_FBO, static_cast<GLsizei>(name.size()), name.data());
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
 }
 
 //=================================================================================
 C_Framebuffer::~C_Framebuffer()
 {
+	if (IsDefaultRenderTarget())
+		return;
+	auto& renderer = Core::C_Application::Get().GetActiveRenderer();
+	auto& glRM	   = renderer.GetRM();
+
+	for (auto& [ID, Attachment] : m_Attachments)
+	{
+		glRM.destoryTexture(Attachment);
+	}
 	glDeleteBuffers(1, &m_FBO);
 }
 
 //=================================================================================
-void C_Framebuffer::AttachTexture(GLenum attachement, std::shared_ptr<Textures::C_Texture> texture)
+Renderer::Handle<Renderer::Texture> C_Framebuffer::GetAttachment(GLenum attachments)
 {
-	if (m_attachements.find(attachement) != m_attachements.end()) {
-		CORE_LOG(E_Level::Warning, E_Context::Render, "Attaching multiple textures to one attach point in framebuffer");
-	}
-	Bind();
-	Core::C_Application::Get().GetActiveRenderer()->AddCommand(
-		std::move(
-			std::make_unique<Commands::C_glFramebufferTexture>(attachement, texture)
-		)
-	);
-	Unbind();
-
-	m_attachements[attachement] = texture;
+	GLE_ASSERT(!IsDefaultRenderTarget(), "Cant GetAttachment of the default render-target.");
+	GLE_ASSERT(m_Attachments.find(attachments) != m_Attachments.end(), "There is no attachment of type {}", attachments);
+	return m_Attachments[attachments];
 }
 
 //=================================================================================
-std::shared_ptr<Textures::C_Texture> C_Framebuffer::GetAttachement(GLenum attachement)
+bool C_Framebuffer::NeedCheck() const
 {
-	GLE_ASSERT(m_attachements.find(attachement) != m_attachements.end(), "There is no attachement of type {}", attachement);
-	return m_attachements[attachement];
+	return m_DirtyFlag;
 }
+
+//=================================================================================
+void C_Framebuffer::SetChecked()
+{
+	m_DirtyFlag = false;
 }
+
+} // namespace GLEngine::GLRenderer

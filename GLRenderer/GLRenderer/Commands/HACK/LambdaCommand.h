@@ -3,25 +3,23 @@
 
 #include <Renderer/IRenderCommand.h>
 
-#include <memory>
+namespace GLEngine::GLRenderer::Commands::HACK {
 
-namespace GLEngine {
-namespace GLRenderer {
-namespace Commands {
-namespace HACK {
-
-class C_LambdaCommand : public Renderer::I_RenderCommand {
+class C_LambdaCommand final : public Renderer::I_RenderCommand {
 public:
-	C_LambdaCommand(std::function<void(void)> fnc);
+	explicit C_LambdaCommand(const std::function<void(void)>& fnc, const std::string& name = "");
 
 	//=================================================================================
-	virtual void Commit() override;
-	virtual E_Type GetType() const override;
-	virtual std::shared_ptr<Renderer::I_Resource> GetResource() const override;
+	void								  Commit() override;
+	E_Type								  GetType() const override;
+
+
+	//=================================================================================
+	[[nodiscard]] std::string GetDescriptor() const override;
 
 private:
+	std::string				  m_Name;
 	std::function<void(void)> m_fnc;
 };
 
-}}}}
-
+} // namespace GLEngine::GLRenderer::Commands::HACK

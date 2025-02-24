@@ -1,67 +1,70 @@
 #include <GLRendererStdafx.h>
 
+#include <GLRenderer/Textures/Texture.h>
 #include <GLRenderer/Textures/TextureLoader.h>
 
+#include <Renderer/IDevice.h>
+#include <Renderer/IRenderer.h>
+#include <Renderer/Textures/TextureDefinitions.h>
 
-//Selects implementation
-//Either DevIL or FreeImage
-//WARNING - there is a bug in FreeImage implementation! It returns BGRA!
-#define USE_DEVIL
+#include <Core/Application.h>
 
-#include <IL/il.h>
+#pragma warning(push)
+#pragma warning(disable : 4005)
+#include <gli/gli.hpp>
+#pragma warning(pop)
 
 
-namespace GLEngine {
-namespace GLRenderer {
-namespace Textures {
+namespace GLEngine::GLRenderer::Textures {
+
 //=================================================================================
-bool TextureLoader::_isILinitialized = false;
-
-//=================================================================================
-bool TextureLoader::loadTexture(const char* path, Mesh::Texture& t)
+std::shared_ptr<C_Texture> TextureLoader::LoadAndInitTexture(const std::filesystem::path& path)
 {
-	if (!_isILinitialized)
+	gli::texture Texture = gli::load(path.generic_string());
+	if (Texture.empty())
+		return nullptr;
+
+
+	gli::gl GL(gli::gl::PROFILE_GL33); // todo
+	auto	Format = GL.translate(Texture.format(), Texture.swizzles());
+	GLenum	Target = GL.translate(Texture.target());
+	// GLenum internalFormat = GL.translate(Format.Internal, Texture.swizzles());
+
+	// should be already allocated
+	GLE_ASSERT(Texture.target() == gli::TARGET_2D, "Only 2d supported now");
+
+	const Renderer::TextureDescriptor desc{path.string(),
+										   static_cast<std::size_t>(Texture.extent(0).x),
+										   static_cast<std::size_t>(Texture.extent(0).y),
+										   Renderer::E_TextureType::TEXTURE_2D,
+										   Renderer::E_TextureFormat::D16,
+										   true,
+										   static_cast<std::uint8_t>(Texture.levels())};
+
+	auto texture = std::make_shared<Textures::C_Texture>(desc);
+
+	Core::C_Application::Get().GetActiveRenderer().GetDevice().AllocateTexture(*texture.get());
+	texture->SetParameter(GL_TEXTURE_BASE_LEVEL, 0);
+	texture->SetParameter(GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(Texture.levels() - 1));
+	glTexParameteriv(Target, GL_TEXTURE_SWIZZLE_RGBA, &Format.Swizzles[0]);
+
+	for (std::size_t Level = 0; Level < Texture.levels(); ++Level)
 	{
-		ilInit();
-		_isILinitialized = true;
+		glm::tvec3<GLsizei> Extent(Texture.extent(Level));
+		if (gli::is_compressed(Texture.format()))
+		{
+			glCompressedTexSubImage2D(Target, static_cast<GLint>(Level), 0, 0, Extent.x, Extent.y, Format.Internal, static_cast<GLsizei>(Texture.size(Level)),
+									  Texture.data(0, 0, Level));
+		}
+		else
+		{
+			glTextureSubImage2D(texture->GetTexture(), static_cast<GLint>(Level), 0, 0, Extent.x, Extent.y, Format.External, Format.Type, Texture.data(0, 0, Level));
+		}
+		texture->SetReadyToUse();
 	}
 
-	ilEnable(IL_ORIGIN_SET);
-	ilOriginFunc(IL_ORIGIN_LOWER_LEFT);
 
-	ILuint image;
-	ilGenImages(1, &image);
-	ilBindImage(image);
-#pragma warning(push)  
-#pragma warning(disable : 4996) // I trust Ing. Kobrtek's code
-	wchar_t* wpath = new wchar_t[strlen(path) + 1];
-	std::mbstowcs(wpath, path, strlen(path));
-	wpath[strlen(path)] = 0;
-	ilLoadImage(wpath);
-	delete[] wpath;
-#pragma warning(pop) // but not mine code!
-
-	ILenum Error;
-	Error = ilGetError();
-
-	if (Error != IL_NO_ERROR)
-	{
-		CORE_LOG(E_Level::Error, E_Context::Render, "DevIL: Failed to load image {}, error: {}", path, Error);
-		return false;
-	}
-
-	//Convert the texture to R8G8B8A8
-	ilConvertImage(IL_RGBA, IL_UNSIGNED_BYTE);
-	t.m_name = path;
-	t.width = ilGetInteger(IL_IMAGE_WIDTH);
-	t.height = ilGetInteger(IL_IMAGE_HEIGHT);
-
-	t.data = std::shared_ptr<unsigned char>(new unsigned char[4 * t.width*t.height]);
-	memcpy(t.data.get(), ilGetData(), 4 * t.width*t.height);
-
-	ilDeleteImage(image);
-
-	return true;
+	return texture;
 }
 
-}}}
+} // namespace GLEngine::GLRenderer::Textures

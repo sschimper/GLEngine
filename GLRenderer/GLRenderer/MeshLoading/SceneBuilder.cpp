@@ -1,46 +1,30 @@
 #include <GLRendererStdafx.h>
 
-#include <GLRenderer/MeshLoading/SceneBuilder.h>
-
-#include <GLRenderer/MeshLoading/Scene.h>
-#include <GLRenderer/MeshLoading/SceneLoader.h>
-
-#include <GLRenderer/Mesh/StaticMeshResource.h>
-
 #include <GLRenderer/Helpers/OpenGLTypesHelpers.h>
-
+#include <GLRenderer/Mesh/StaticMeshResource.h>
+#include <GLRenderer/MeshLoading/SceneBuilder.h>
 #include <GLRenderer/Textures/Texture.h>
+#include <GLRenderer/Textures/TextureLoader.h>
+#include <Renderer/Descriptors/TextureDescriptor.h>
+
+#include <Renderer/IDevice.h>
+#include <Renderer/IRenderer.h>
+#include <Renderer/Mesh/Loading/SceneLoader.h>
+#include <Renderer/Mesh/Scene.h>
 
 #include <Physics/Primitives/AABB.h>
 
-// #include "render/Nodes/MeshNode.h"
-// #include "render/Nodes/RenderNode.h"
-// #include "render/Nodes/Scene.h"
-// #include "render/Nodes/Terrain.h"
-
-#include <GLRenderer/Textures/TextureLoader.h>
+#include <Core/Application.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 
-//#include "Debug.h"
-
 #include <pugixml.hpp>
 
-namespace GLEngine {
-namespace GLRenderer {
-namespace Mesh {
+namespace GLEngine::GLRenderer::Mesh {
 
 //=================================================================================
 C_SceneBuilder::C_SceneBuilder()
 {
-	m_nullTexture = std::make_shared<Textures::C_Texture>();
-	m_nullTexture->StartGroupOp();
-	m_nullTexture->SetFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
-	m_nullTexture->SetWrap(E_WrapFunction::Repeat, E_WrapFunction::Repeat);
-	GLubyte data[] = { 0, 0, 0, 255 };
-	glTexImage2D(m_nullTexture->GetTarget(), 0, GL_RGBA, 1, 1, 0, GL_RGBA, T_TypeToGL<GLubyte>::value, data);
-	m_nullTexture->SetDimensions({ 1,1 });
-	m_nullTexture->EndGroupOp();
 }
 
 //=================================================================================
@@ -54,12 +38,12 @@ C_SceneBuilder::C_SceneBuilder()
  *				to xml containing scene definition
  * @brief
  */
- //=================================================================================
-	// used to be rendernode
+//=================================================================================
+// used to be rendernode
 /*
 std::shared_ptr<render::C_Scene> C_SceneBuilder::LoadScene(const std::string& sceneDefinitionFile)
 {
-	m_sceneFolder = GetFolderpath(sceneDefinitionFile);
+	m_sceneFolder = GetFolderPath(sceneDefinitionFile);
 
 	pugi::xml_parse_result result;
 	pugi::xml_document document;
@@ -94,18 +78,18 @@ std::shared_ptr<render::C_Terrain> C_SceneBuilder::LoadTerrain(const pugi::xml_n
 {
 	// assert(strcmp(node.name(), "terrain") == 0);
 	// auto fileAtt = node.attribute("file");
-	// 
+	//
 	// TextureLoader tl;
-	// 
+	//
 	// Texture t;
 	// bool retval = tl.loadTexture((m_sceneFolder + "/" + node.attribute("file").as_string()).c_str(), t);
-	// 
-	// 
+	//
+	//
 	// if (!retval)
 	// {
 	// 	throw std::exception("terrain height map does not exists");
 	// }
-	// 
+	//
 	// return std::make_shared<render::C_Terrain>(node.attribute("tile-size").as_float(1.0f), t);
 
 	return nullptr;
@@ -124,7 +108,7 @@ std::shared_ptr<C_Scene> C_SceneBuilder::LoadModel(const pugi::xml_node& node)
 	//	modelMatrix = glm::translate(modelMatrix, ReadPositionNode(positionNode));
 	//}
 
-	auto path = (m_sceneFolder + "/" + GetFolderpath(node.attribute("file").as_string()));
+	auto path = (m_sceneFolder + "/" + GetFolderPath(node.attribute("file").as_string()));
 
 	if (!sl->addModelFromFileToScene(path.c_str(), GetFilePart(node.attribute("file").as_string()).c_str(), scene, modelMatrix))
 	{
@@ -194,29 +178,24 @@ std::shared_ptr<I_RenderNode> C_SceneBuilder::LoadMesh(const Mesh& mesh)
 */
 
 //=================================================================================
-std::shared_ptr<Textures::C_Texture> C_SceneBuilder::LoadTexture(const Texture & texture) const
+std::shared_ptr<Renderer::I_DeviceTexture> C_SceneBuilder::LoadTexture(const Renderer::I_TextureViewStorage& texture, const std::string& name) const
 {
-	auto tex = std::make_shared<Textures::C_Texture>(texture.m_name);
-	tex->StartGroupOp();
-	glTexImage2D(tex->GetTarget(),
-		0,
-		GL_RGB,
-		(GLsizei)texture.width,
-		(GLsizei)texture.height,
-		0,
-		GL_RGBA,
-		T_TypeToGL<decltype(texture.data)::element_type>::value,
-		texture.data.get());
-	tex->SetDimensions({ texture.width, texture.height });
-//	ErrorCheck();
-	tex->SetWrap(E_WrapFunction::Repeat, E_WrapFunction::Repeat);
-	tex->SetFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
-	tex->GenerateMipMaps();
-//	ErrorCheck();
-
-	tex->EndGroupOp();
-
-	return tex;
+	// const Renderer::TextureDescriptor desc{
+	// 	name,
+	// 	texture.GetDimensions().x,
+	// 	texture.GetDimensions().y,
+	// 	Renderer::E_TextureType::TEXTURE_2D,
+	// 	Renderer::E_TextureFormat::RGBA8i
+	// };
+	//
+	// auto tex = Core::C_Application::Get().GetActiveRenderer()->GetDevice().CreateTexture(desc);
+	// tex->SetTexData2D(0, &texture);
+	// tex->SetWrap(Renderer::E_WrapFunction::Repeat, Renderer::E_WrapFunction::Repeat);
+	// tex->SetFilter(Renderer::E_TextureFilter::LinearMipMapLinear, Renderer::E_TextureFilter::Linear);
+	// tex->GenerateMipMaps();
+	//
+	// return tex;
+	return nullptr;
 }
 
 //=================================================================================
@@ -227,7 +206,7 @@ glm::vec3 C_SceneBuilder::ReadPositionNode(const pugi::xml_node& node) const noe
 }
 
 //=================================================================================
-std::string C_SceneBuilder::GetFolderpath(const std::string& filePath) const
+std::string C_SceneBuilder::GetFolderPath(const std::string& filePath) const
 {
 	std::size_t found = filePath.find_last_of("/\\");
 
@@ -242,4 +221,4 @@ std::string C_SceneBuilder::GetFilePart(const std::string& filePath) const
 	return filePath.substr(found + 1, std::string::npos);
 }
 
-}}}
+} // namespace GLEngine::GLRenderer::Mesh

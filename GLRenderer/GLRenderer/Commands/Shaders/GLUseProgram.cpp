@@ -3,21 +3,18 @@
 #include <GLRenderer/Commands/Shaders/GLUseProgram.h>
 
 
-namespace GLEngine {
-namespace GLRenderer {
-namespace Commands {
+namespace GLEngine::GLRenderer::Commands {
 
 //=================================================================================
 C_GLUseProgram::C_GLUseProgram(GLuint program)
-	: m_Proram(program)
+	: m_Program(program)
 {
-
 }
 
 //=================================================================================
 void C_GLUseProgram::Commit()
 {
-	glUseProgram(m_Proram);
+	glUseProgram(m_Program);
 }
 
 //=================================================================================
@@ -27,9 +24,9 @@ Renderer::I_RenderCommand::E_Type C_GLUseProgram::GetType() const
 }
 
 //=================================================================================
-std::shared_ptr<GLEngine::Renderer::I_Resource> C_GLUseProgram::GetResource() const
+std::string C_GLUseProgram::GetDescriptor() const
 {
-	return nullptr;
+	return fmt::format("UseProgram {}", m_Program);
 }
 
-}}}
+} // namespace GLEngine::GLRenderer::Commands
